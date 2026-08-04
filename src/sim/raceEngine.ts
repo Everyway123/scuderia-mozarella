@@ -163,7 +163,10 @@ export class Race {
   private applyStartSpread(): void {
     for (const car of this.state.cars) {
       const driver = this.drivers.get(car.driverId)!;
-      const gridLoss = (car.position - 1) * 0.32;
+      // Реальний пелотон перетинає лінію після першого кола розтягнутим
+      // на 12–18 секунд. 0.32 с на позицію давало вдвічі щільніший старт,
+      // і далі весь пелотон півгонки їхав одним «поїздом».
+      const gridLoss = (car.position - 1) * 0.62;
       const reaction = this.rng.gauss(0.25, 0.18 * (1.4 - driver.consistency));
       car.totalTime += gridLoss + Math.max(0, reaction);
     }
