@@ -10,7 +10,7 @@ import { TRACKS_2026 } from '../src/data/tracks2026.ts';
 import { Race } from '../src/sim/raceEngine.ts';
 import type { RaceLength } from '../src/sim/types.ts';
 
-const perTrack = Number(process.argv[2] ?? 10);
+const perTrackRaces = Number(process.argv[2] ?? 10);
 const length = Number(process.argv[3] ?? 100) as RaceLength;
 
 const wins = new Map<string, number>();
@@ -27,10 +27,31 @@ let stops = 0;
 let finishers = 0;
 let wetRaces = 0;
 
+interface TrackStat {
+  races: number;
+  overtakes: number;
+  dnfs: number;
+  safetyCars: number;
+  stops: number;
+  finishers: number;
+  wet: number;
+}
+const perTrack = new Map<string, TrackStat>();
+
 const t0 = performance.now();
 
 for (const track of TRACKS_2026) {
-  for (let i = 0; i < perTrack; i++) {
+  perTrack.set(track.id, {
+    races: 0,
+    overtakes: 0,
+    dnfs: 0,
+    safetyCars: 0,
+    stops: 0,
+    finishers: 0,
+    wet: 0,
+  });
+  const ts = perTrack.get(track.id)!;
+  for (let i = 0; i < perTrackRaces; i++) {
     const race = new Race({
       track,
       drivers: DRIVERS_2026,
@@ -40,13 +61,14 @@ for (const track of TRACKS_2026) {
     });
     race.runToEnd();
     races++;
+    ts.races++;
 
     for (const e of race.state.events) {
-      if (e.kind === 'overtake') overtakes++;
-      else if (e.kind === 'dnf') dnfs++;
-      else if (e.kind === 'safety-car') safetyCars++;
+      if (e.kind === 'overtake') { overtakes++; ts.overtakes++; }
+      else if (e.kind === 'dnf') { dnfs++; ts.dnfs++; }
+      else if (e.kind === 'safety-car') { safetyCars++; ts.safetyCars++; }
     }
-    if (race.state.events.some((e) => e.kind === 'weather')) wetRaces++;
+    if (race.state.events.some((e) => e.kind === 'weather')) { wetRaces++; ts.wet++; }
 
     const cls = race.classification();
     const winner = cls.find((c) => c.status !== 'dnf');
@@ -62,6 +84,8 @@ for (const track of TRACKS_2026) {
       if (c.status !== 'dnf') {
         stops += c.stops;
         finishers++;
+        ts.stops += c.stops;
+        ts.finishers++;
         if (c.position <= 3) podiums.set(c.team.id, (podiums.get(c.team.id) ?? 0) + 1);
       }
     }
@@ -95,7 +119,21 @@ for (const [id, n] of topDrivers) {
   console.log(`   ${d.name.padEnd(20)} ${String(n).padStart(4)} (${((n / races) * 100).toFixed(1)}%)`);
 }
 
-console.log('\n  ДИНАМІКА ГОНКИ (норма Ф1 у дужках)');
+console.log('\n  ХАРАКТЕР ТРАС (усереднення по календарю ховає найважливіше)');
+console.log('  ТРАСА                ОБГОНИ  ПІТ   СХОДИ   SC    ДОЩ');
+console.log('  ' + '─'.repeat(58));
+for (const track of TRACKS_2026) {
+  const t = perTrack.get(track.id)!;
+  console.log(
+    `  ${track.name.padEnd(20)} ${(t.overtakes / perTrack.get(track.id)!.races).toFixed(0).padStart(5)}` +
+      ` ${(t.stops / Math.max(1, t.finishers)).toFixed(2).padStart(6)}` +
+      ` ${(t.dnfs / t.races).toFixed(2).padStart(6)}` +
+      ` ${(t.safetyCars / t.races).toFixed(2).padStart(6)}` +
+      ` ${((t.wet / t.races) * 100).toFixed(0).padStart(5)}%`,
+  );
+}
+
+console.log('\n  ДИНАМІКА ГОНКИ, УСЕРЕДНЕНО (норма Ф1 у дужках)');
 console.log(`   обгонів за гонку     ${(overtakes / races).toFixed(1)}   (30–60)`);
 console.log(`   сходів за гонку      ${(dnfs / races).toFixed(2)}   (1–3)`);
 console.log(`   сейфті-карів         ${(safetyCars / races).toFixed(2)}   (0.3–0.7)`);

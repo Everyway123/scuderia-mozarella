@@ -1,7 +1,7 @@
 // Випадковість: сходи, сейфті-кар, погода, помилки пілотів.
 // Усе через seeded RNG — щоб гонку можна було відтворити.
 
-import { DNF_BASE, PACE_RISK, SC_MAX_LAPS, SC_MIN_LAPS } from './constants.ts';
+import { DNF_PER_RACE, PACE_RISK, SC_MAX_LAPS, SC_MIN_LAPS } from './constants.ts';
 import type { Rng } from './rng.ts';
 import type { CarState, Driver, RaceState, Team, Track, WeatherState } from './types.ts';
 
@@ -20,14 +20,15 @@ export function checkDnf(
   team: Team,
   driver: Driver,
   rng: Rng,
-  compression = 1,
+  totalLaps: number,
 ): string | null {
   const stress = PACE_RISK[car.paceMode];
   // Нестабільний пілот частіше ловить помилку, що закінчується стіною
   const errorProne = 1 + (1 - driver.consistency) * 0.8;
-  // У стиснутій гонці кіл менше, тому ризик на коло має бути пропорційно вищим —
-  // інакше спринт майже без сходів, а це вже інша гра
-  const p = DNF_BASE * team.reliability * stress * errorProne * compression;
+  // Ризик заданий на гонку й ділиться на її довжину: так і Монако з 78 колами,
+  // і Спа з 44 мають однаковий базовий шанс сходу. Стиснення враховано
+  // автоматично — у короткій гонці кіл менше, тож на коло припадає більше.
+  const p = (DNF_PER_RACE / Math.max(1, totalLaps)) * team.reliability * stress * errorProne;
 
   if (rng.chance(p)) {
     // Помилка пілота чи техніка — від режиму темпу залежить, що саме

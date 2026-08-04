@@ -2,9 +2,14 @@
 // Тим самим кодом користується і ШІ-суперник, і підказка гравцеві на пітволі —
 // щоб «оптимальна» стратегія в підказці була тією самою, з якою він бореться.
 
-import { COMPOUNDS, DRY_COMPOUNDS } from './constants.ts';
+import {
+  COMPOUNDS,
+  DRY_COMPOUNDS,
+  POSITION_LOSS_FREE,
+  POSITION_LOSS_MAX,
+} from './constants.ts';
 import type { Rng } from './rng.ts';
-import { lapsToCliff, pastCliff } from './tyres.ts';
+import { lapsToCliff, managementFactor, pastCliff } from './tyres.ts';
 import type { CarState, CompoundId, Driver, RaceState, Track, WeatherState } from './types.ts';
 
 export interface StintPlan {
@@ -41,7 +46,9 @@ function stintCost(compound: CompoundId, laps: number, track: Track, driver: Dri
   for (let age = 0; age < laps; age++) {
     // Та сама формула, що й у tyreDelta — інакше «оптимальний» план
     // рахувався б за іншою фізикою, ніж та, за якою їде гонка
-    let loss = spec.offset * c + spec.degPerLap * age * track.tyreWear * c * c;
+    let loss =
+      spec.offset * c +
+      spec.degPerLap * age * track.tyreWear * c * c * managementFactor(driver);
     if (wear > spec.cliff) {
       const past = (wear - spec.cliff) / (1 - spec.cliff);
       loss += spec.cliffLoss * past * past * c;
@@ -52,6 +59,15 @@ function stintCost(compound: CompoundId, laps: number, track: Track, driver: Dri
     wear = Math.min(1.25, wear + rate);
   }
   return total;
+}
+
+/**
+ * Ціна зайвого заїзду понад чистий час: після боксів треба ще відіграти
+ * позиції на трасі. У Монако це майже неможливо, у Монці — дрібниця.
+ */
+function positionCost(track: Track): number {
+  const ease = Math.min(1, track.overtaking / POSITION_LOSS_FREE);
+  return POSITION_LOSS_MAX * (1 - ease);
 }
 
 /** Розбити дистанцію на N+1 стінтів якомога рівніше. */
@@ -107,7 +123,7 @@ export function planWithStops(
     // Правило двох сумішей
     if (new Set(combo).size < 2) continue;
 
-    let cost = pitLossTotal * stops;
+    let cost = (pitLossTotal + positionCost(track)) * stops;
     for (let i = 0; i < parts; i++) cost += stintCost(combo[i]!, lengths[i]!, track, driver);
 
     if (!best || cost < best.cost) {

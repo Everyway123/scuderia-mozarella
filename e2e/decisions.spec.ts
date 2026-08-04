@@ -24,29 +24,53 @@ async function quickRace(page: import('@playwright/test').Page, trackId: string,
 
 test('E3: сейфті-кар піднімає запит, і відповідь заводить машини в бокси', async ({ page }) => {
   const errors = await openApp(page);
-  // Монако, seed 4: сейфті-кар на 2-му колі з 20
-  await quickRace(page, 'monaco', 4);
 
-  // До сейфті-кара може прийти інший момент рішення — на них відповідаємо
-  // й чекаємо саме той, який перевіряємо
-  const got = await waitForPrompt(page, 'sc', 60);
-  expect(got, 'запит про сейфті-кар так і не зʼявився').toBe(true);
+  // Монако — найбільш «сейфті-карна» траса календаря. Seed'и підібрані тим
+  // самим кодом, яким гру запускає застосунок: разом із квалою, бо стартова
+  // решітка теж витрачає RNG і зсуває всі подальші події.
+  // Перебираємо кілька — прив'язка до одного числа вже двічі ламала сценарій.
   const prompt = page.locator('.prompt.on');
+  let got = false;
+  for (const seed of [4, 10, 26]) {
+    await quickRace(page, 'monaco', seed);
+    // Без прискорення 30 секунд очікування покривають лише кілька кіл —
+    // саме на цьому сценарій і вичерпував таймаут
+    await page.click('#speedBtn');
+    await page.click('#speedBtn');
+    got = await waitForPrompt(page, 'sc', 30);
+    if (got) break;
+    await page.goto('/');
+    await expect(page.locator('[data-test="menu"]')).toBeVisible();
+  }
+  expect(got, 'запит про сейфті-кар так і не зʼявився на жодному seed').toBe(true);
 
   const before = await raceState(page);
-  const stopsBefore = before!.players.map((p) => p.stops);
+  const stopsBefore = new Map(before!.players.map((p) => [p.driverId, p.stops]));
 
   // Перша кнопка — «обидві в бокси»
   await prompt.locator('button').first().click();
 
+  // Перевіряти проміжний прапорець pitRequest ненадійно: після відповіді гонка
+  // одразу відновлюється, і наказ встигає перетворитись на справжній заїзд
+  // ще до читання стану. Тому дивимось на результат, а не на намір.
   const armed = await raceState(page);
-  expect(armed!.players.every((p) => p.pitRequest !== null)).toBe(true);
+  for (const p of armed!.players) {
+    if (p.status === 'dnf') continue;
+    const pitted = p.stops > (stopsBefore.get(p.driverId) ?? 0);
+    expect(
+      p.pitRequest !== null || pitted,
+      `${p.driverId}: наказ у бокси не поставлено й заїзду не сталося`,
+    ).toBe(true);
+  }
 
   await playThrough(page, { maxSeconds: 70 });
   const after = await raceState(page);
-  after!.players.forEach((p, i) => {
-    expect(p.stops).toBeGreaterThan(stopsBefore[i]!);
-  });
+  for (const p of after!.players) {
+    if (p.status === 'dnf') continue;
+    expect(p.stops, `${p.driverId}: заїзду так і не сталося`).toBeGreaterThan(
+      stopsBefore.get(p.driverId) ?? 0,
+    );
+  }
 
   expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
 });

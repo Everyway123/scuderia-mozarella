@@ -110,7 +110,10 @@ describe('модель кола', () => {
 describe('гума', () => {
   it('свіжий софт швидший за свіжий хард', () => {
     const track = TRACK_BY_ID.get('silverstone')!;
-    expect(tyreDelta(freshTyre('soft'), track)).toBeLessThan(tyreDelta(freshTyre('hard'), track));
+    const d = DRIVER_BY_ID.get('verstappen')!;
+    expect(tyreDelta(freshTyre('soft'), track, d)).toBeLessThan(
+      tyreDelta(freshTyre('hard'), track, d),
+    );
   });
 
   it('софт зношується швидше за хард', () => {
@@ -124,8 +127,9 @@ describe('гума', () => {
   it('кліф різко додає втрати', () => {
     const track = TRACK_BY_ID.get('bahrain')!;
     const spec = COMPOUNDS.soft;
-    const before = tyreDelta({ compound: 'soft', age: 15, wear: spec.cliff - 0.02 }, track);
-    const after = tyreDelta({ compound: 'soft', age: 15, wear: 1 }, track);
+    const d = DRIVER_BY_ID.get('verstappen')!;
+    const before = tyreDelta({ compound: 'soft', age: 15, wear: spec.cliff - 0.02 }, track, d);
+    const after = tyreDelta({ compound: 'soft', age: 15, wear: 1 }, track, d);
     expect(after - before).toBeGreaterThan(2.5);
   });
 

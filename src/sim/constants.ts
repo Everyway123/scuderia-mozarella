@@ -34,8 +34,8 @@ export const COMPOUNDS: Record<CompoundId, CompoundSpec> = {
     id: 'soft',
     label: 'софт',
     offset: 0,
-    degPerLap: 0.18,
-    lifeLaps: 18,
+    degPerLap: 0.162,
+    lifeLaps: 21,
     cliff: 0.72,
     cliffLoss: 3.2,
     color: '#ff2d55',
@@ -44,8 +44,8 @@ export const COMPOUNDS: Record<CompoundId, CompoundSpec> = {
     id: 'medium',
     label: 'медіум',
     offset: 0.35,
-    degPerLap: 0.11,
-    lifeLaps: 28,
+    degPerLap: 0.099,
+    lifeLaps: 33,
     cliff: 0.8,
     cliffLoss: 2.6,
     color: '#ffd23f',
@@ -54,8 +54,8 @@ export const COMPOUNDS: Record<CompoundId, CompoundSpec> = {
     id: 'hard',
     label: 'хард',
     offset: 0.65,
-    degPerLap: 0.07,
-    lifeLaps: 40,
+    degPerLap: 0.063,
+    lifeLaps: 46,
     cliff: 0.88,
     cliffLoss: 2.0,
     color: '#f2f2f2',
@@ -176,8 +176,14 @@ export const DEFENCE_COST = 0.1;
 
 // ---- Випадковість ----
 
-/** Базова ймовірність сходу на пілота за коло. Дає ~2–3 сходи на гонку. */
-export const DNF_BASE = 0.0009;
+/**
+ * Імовірність сходу на пілота ЗА ГОНКУ (не за коло).
+ *
+ * За коло вона була помилкою: у Монако 78 кіл, у Спа 44 — і Монако видавало
+ * удвічі більше сходів просто через довший календарний список кіл. Реальні
+ * гонки Ф1 однакові за дистанцією, тож і базовий ризик має бути однаковий.
+ */
+export const DNF_PER_RACE = 0.06;
 
 /** Наскільки евакуація гуми з траси прискорює коло до кінця гонки, с. */
 export const TRACK_EVOLUTION = 0.45;
@@ -216,3 +222,16 @@ export const POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
  * піт коштує 20 с, а порушення не коштувало нічого.
  */
 export const TWO_COMPOUND_PENALTY = 30;
+
+/**
+ * Скільки секунд «коштує» втрата позиції на трасі за один зайвий піт-стоп
+ * там, де обганяти майже неможливо.
+ *
+ * Без цього планувальник рахував лише чистий час і виходило, що двостоп
+ * оптимальний на 19 із 24 трас. У житті це не так саме тому, що після
+ * заїзду треба ще когось проїхати: у Монако це неможливо, у Монці — легко.
+ */
+export const POSITION_LOSS_MAX = 13;
+
+/** Вище цього фактора обгону втрата позиції вже не лякає. */
+export const POSITION_LOSS_FREE = 0.3;

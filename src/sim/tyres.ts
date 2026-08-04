@@ -12,14 +12,29 @@ export function freshTyre(compound: CompoundId): TyreState {
  * Скільки секунд на коло втрачає болід через стан гуми.
  * Лінійна складова + кліф, що росте квадратично після порогу.
  */
-export function tyreDelta(tyre: TyreState, track: Track): number {
+/**
+ * Наскільки пілот сповільнює сам знос. Нормовано на середній рівень 0.8,
+ * щоб калібрування трас не поїхало: Алонсо (0.95) втрачає на ~7% менше
+ * за коло, Стролл (0.65) — на ~7% більше.
+ *
+ * Раніше вміння берегти гуму впливало лише на те, коли настане кліф, але не
+ * на сам знос — і два пілоти з різними руками отримували однакову стратегію
+ * до дванадцятого знака.
+ */
+function managementFactor(driver: Driver): number {
+  return 1 - 0.5 * (driver.tyreManagement - 0.8);
+}
+
+export function tyreDelta(tyre: TyreState, track: Track, driver: Driver): number {
   const spec = COMPOUNDS[tyre.compound];
   const c = track.compression ?? 1;
 
   // Стиснення гонки: одне коло «коштує» c справжніх.
   // Стала складова множиться на c, а лінійна по віку — на c², бо вік у колах
   // теж стиснувся. Без квадрата коротка гонка втрачає всю гумову драму.
-  let loss = spec.offset * c + spec.degPerLap * tyre.age * track.tyreWear * c * c;
+  let loss =
+    spec.offset * c +
+    spec.degPerLap * tyre.age * track.tyreWear * c * c * managementFactor(driver);
 
   if (tyre.wear > spec.cliff) {
     const past = (tyre.wear - spec.cliff) / (1 - spec.cliff);
@@ -65,6 +80,8 @@ export function ageTyre(
 }
 
 /** Чи вже за кліфом — пілот по радіо просить бокси саме тут. */
+export { managementFactor };
+
 export function pastCliff(tyre: TyreState): boolean {
   return tyre.wear > COMPOUNDS[tyre.compound].cliff;
 }

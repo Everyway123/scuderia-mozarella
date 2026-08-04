@@ -413,13 +413,13 @@ export class Race {
     for (const car of running) {
       const team = this.teams.get(car.teamId)!;
       const driver = this.drivers.get(car.driverId)!;
-      const reason = checkDnf(car, team, driver, this.rng, this.track.compression ?? 1);
+      const reason = checkDnf(car, team, driver, this.rng, s.totalLaps);
       if (reason) {
         car.status = 'dnf';
         car.dnfReason = reason;
         this.log('dnf', `${driver.short} сходить: ${reason}`, car.driverId);
         // Сход часто тягне за собою сейфті-кар
-        if (this.rng.chance(0.16) && s.flag === 'green') this.deploySafetyCar(4);
+        if (this.rng.chance(0.1) && s.flag === 'green') this.deploySafetyCar(4);
       }
     }
 
