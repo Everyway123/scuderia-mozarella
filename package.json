@@ -1,0 +1,22 @@
+{
+  "name": "scuderia-mozarella",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SCUDERIA MOZARELLA — F1-менеджер у браузері, сезон 2026",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "race": "node scripts/race.ts",
+    "balance": "node scripts/balance.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vitest": "^3.0.5"
+  }
+}
