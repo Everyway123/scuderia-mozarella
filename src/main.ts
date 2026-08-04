@@ -1,4 +1,4 @@
-// Оболонка застосунку: меню → штаб сезону → гонка → результат → штаб.
+// Оболонка застосунку: меню → штаб → квала → гонка → результат → штаб.
 //
 // Атрибути data-test навмисно стабільні: за них тримаються E2E-сценарії,
 // і ламати їх косметичними правками не можна.
@@ -8,26 +8,29 @@ import { DRIVERS_2026, driversOfTeam } from './data/drivers2026.ts';
 import { TEAMS_2026 } from './data/teams2026.ts';
 import { TRACKS_2026, TRACK_BY_ID } from './data/tracks2026.ts';
 import { RaceView } from './race/RaceView.ts';
+import { PART_BY_ID } from './season/parts.ts';
 import {
+  CHIPS,
+  canUseChip,
   clearSave,
+  computeRp,
   currentTrack,
-  DEV_AREAS,
-  DEV_MAX,
-  devCost,
   driverStandings,
   isSeasonOver,
   load,
   newSeason,
+  offersFor,
   raceSeed,
   recordRace,
   save,
   teamsForRound,
   teamStandings,
-  type DevArea,
+  useChip,
+  type ChipId,
   type SeasonState,
 } from './season/season.ts';
 import { COMPOUNDS } from './sim/constants.ts';
-import { gridFromQuali, runQualifying } from './sim/qualifying.ts';
+import { gridFromQuali, runQualifying, type QualiResult } from './sim/qualifying.ts';
 import { fmt, type Race } from './sim/raceEngine.ts';
 import { Rng } from './sim/rng.ts';
 import type { RaceLength, Team } from './sim/types.ts';
@@ -35,14 +38,14 @@ import type { RaceLength, Team } from './sim/types.ts';
 const app = document.querySelector<HTMLDivElement>('#app')!;
 let view: RaceView | null = null;
 let season: SeasonState | null = null;
-
-/** Швидка гонка поза сезоном. */
 let quick: { trackId: string; length: RaceLength; seed: number; teamId: string } | null = null;
 
 function clearView(): void {
   view?.destroy();
   view = null;
 }
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 // ---------------------------------------------------------------- МЕНЮ
 
@@ -71,7 +74,7 @@ function showMenu(): void {
             const ds = driversOfTeam(t.id)
               .map((d) => d.short)
               .join(' / ');
-            return `<option value="${t.id}">${t.name} — ${ds}</option>`;
+            return `<option value="${t.id}">${esc(t.name)} — ${ds}</option>`;
           }).join('')}
         </select>
       </label>
@@ -105,7 +108,7 @@ function showMenu(): void {
           ? 'Боротьба за подіум. Стратегія вирішує більше за темп.'
           : rank <= 8
             ? 'Середняк. Очки треба вигризати вікном піту й погодою.'
-            : 'Аутсайдер. Кожне очко — подія. Найчесніший тест стратегії.';
+            : 'Аутсайдер. Кожна відіграна позиція — подія. Найчесніший тест стратегії.';
     hint.textContent = `${rank}-й темп грида (+${team.pace.toFixed(2)} с/коло). ${verdict}`;
   };
 
@@ -128,12 +131,7 @@ function showMenu(): void {
   });
 
   app.querySelector('[data-test="quick-race"]')!.addEventListener('click', () => {
-    quick = {
-      trackId: TRACKS_2026[0]!.id,
-      length,
-      seed: 2026,
-      teamId: teamSel.value,
-    };
+    quick = { trackId: TRACKS_2026[0]!.id, length, seed: 2026, teamId: teamSel.value };
     showQuickSetup();
   });
 
@@ -160,7 +158,7 @@ function showQuickSetup(): void {
       <label class="field">
         <span>Етап</span>
         <select id="trackSel" data-test="track-select">
-          ${TRACKS_2026.map((t) => `<option value="${t.id}">${t.round}. ${t.name} — ${t.country}</option>`).join('')}
+          ${TRACKS_2026.map((t) => `<option value="${t.id}">${t.round}. ${esc(t.name)} — ${esc(t.country)}</option>`).join('')}
         </select>
       </label>
       <label class="field"><span>Seed</span>
@@ -172,7 +170,7 @@ function showQuickSetup(): void {
   app.querySelector('[data-test="go"]')!.addEventListener('click', () => {
     q.trackId = app.querySelector<HTMLSelectElement>('#trackSel')!.value;
     q.seed = Number(app.querySelector<HTMLInputElement>('#seedInput')!.value) || 2026;
-    startRace(TRACK_BY_ID.get(q.trackId)!.id, q.length, q.seed, TEAMS_2026, q.teamId, null);
+    startRace(q.trackId, q.length, q.seed, TEAMS_2026, q.teamId, null);
   });
   app.querySelector('[data-test="back"]')!.addEventListener('click', showMenu);
 }
@@ -188,45 +186,92 @@ function showHub(): void {
 
   const track = currentTrack(s);
   const team = TEAMS_2026.find((t) => t.id === s.teamId)!;
-  const dStand = driverStandings(s).slice(0, 10);
+  const mine = driversOfTeam(s.teamId);
   const tStand = teamStandings(s);
-  const myTeamPos = tStand.findIndex((r) => r.id === s.teamId) + 1;
+  const myPos = tStand.findIndex((r) => r.id === s.teamId) + 1;
+  const offers = offersFor(s);
+  const isHome = s.homeTracks.includes(track.id);
 
   app.innerHTML = `
     <div class="hub" data-test="hub">
       <header class="hub-head" style="--team:${team.color}">
-        <div><b>${team.name}</b><span>сезон 2026 · ${myTeamPos}-е місце в кубку конструкторів</span></div>
+        <div><b>${esc(team.name)}</b><span>сезон 2026 · ${myPos}-е місце в кубку конструкторів</span></div>
         <button class="btn ghost" data-test="to-menu">← Меню</button>
       </header>
 
       <div class="hub-grid">
         <section class="card next-race">
-          <h3>Етап ${s.round} з 24</h3>
-          <div class="track-name">${track.name}</div>
-          <div class="track-meta">${track.country} · ${Math.max(5, Math.round((track.laps * s.length) / 100))} кіл (${s.length}%)</div>
+          <h3>Етап ${s.round} з 24 ${isHome ? '<span class="home-badge" data-test="home-badge">🏠 фірмова траса</span>' : ''}</h3>
+          <div class="track-name">${esc(track.name)}</div>
+          <div class="track-meta">${esc(track.country)} · ${Math.max(5, Math.round((track.laps * s.length) / 100))} кіл (${s.length}%)</div>
           <ul class="track-facts">
-            <li>Знос гуми: <b>${track.tyreWear >= 1.2 ? 'високий' : track.tyreWear >= 0.95 ? 'середній' : 'низький'}</b></li>
-            <li>Обгін: <b>${track.overtaking >= 0.25 ? 'легко' : track.overtaking >= 0.15 ? 'важко' : 'майже неможливо'}</b></li>
-            <li>Втрата на піт: <b>${track.pitLoss} с</b></li>
-            <li>Шанс дощу: <b>${Math.round(track.rainChance * 100)}%</b></li>
-            <li>Сейфті-кар: <b>${Math.round(track.safetyCar * 100)}%</b></li>
+            <li>Знос гуми <b>${track.tyreWear >= 1.2 ? 'високий' : track.tyreWear >= 0.95 ? 'середній' : 'низький'}</b></li>
+            <li>Обгін <b>${track.overtaking >= 0.19 ? 'реальний' : track.overtaking >= 0.12 ? 'важкий' : 'майже неможливий'}</b></li>
+            <li>Втрата на піт <b>${track.pitLoss} с</b></li>
+            <li>Шанс дощу <b>${Math.round(track.rainChance * 100)}%</b></li>
+            <li>Сейфті-кар <b>${Math.round(track.safetyCar * 100)}%</b></li>
           </ul>
-          <button class="btn primary big" data-test="start-race">🏁 НА СТАРТ</button>
+          <button class="btn primary big" data-test="start-race">🏁 НА КВАЛУ</button>
         </section>
 
         <section class="card">
-          <h3>Розробка боліда · <span class="rp" data-test="rp">${s.rp} RP</span></h3>
-          <div class="dev-list">
-            ${DEV_AREAS.map((a) => {
-              const lvl = s.development[a.id];
-              const cost = devCost(lvl);
-              const maxed = lvl >= DEV_MAX;
-              return `<div class="dev-row">
-                <div class="dev-info"><b>${a.label}</b><span>${a.note}</span></div>
-                <div class="dev-pips">${Array.from({ length: DEV_MAX }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('')}</div>
-                <button class="btn small" data-dev="${a.id}" data-test="dev-${a.id}"
-                  ${maxed || s.rp < cost ? 'disabled' : ''}>${maxed ? 'макс' : `+1 · ${cost}`}</button>
-              </div>`;
+          <h3>Ставка на етап</h3>
+          <p class="card-note">Хто з двох привезе результат? Його очки рахуються подвійно.
+          Сходить або лишиться поза очками — RP за нього віднімається.
+          Після квали ставку можна перерішити один раз.</p>
+          <div class="bet" data-test="bet">
+            ${mine
+              .map(
+                (d) =>
+                  `<button class="bet-opt${s.nomination === d.id ? ' on' : ''}" data-bet="${d.id}">
+                     <b>${esc(d.name)}</b><span>#${d.number}</span></button>`,
+              )
+              .join('')}
+          </div>
+        </section>
+
+        <section class="card">
+          <h3>Розробка · <span class="rp" data-test="rp">${s.rp} RP</span></h3>
+          <p class="card-note">Три пропозиції на етап. Кожна деталь — компроміс,
+          а не просто поліпшення.</p>
+          <div class="offers" data-test="offers">
+            ${offers
+              .map((id) => {
+                const p = PART_BY_ID.get(id)!;
+                const afford = s.rp >= p.cost;
+                return `<button class="offer${afford ? '' : ' poor'}" data-part="${id}" ${afford ? '' : 'disabled'}>
+                  <div class="offer-name">${esc(p.name)}</div>
+                  <div class="offer-note">${esc(p.note)}</div>
+                  <div class="offer-cost">${p.cost} RP</div>
+                </button>`;
+              })
+              .join('')}
+            ${offers.length === 0 ? '<p class="card-note">Уся колода вже на боліді.</p>' : ''}
+          </div>
+          <div class="installed" data-test="installed">
+            ${
+              s.parts.length
+                ? s.parts
+                    .map((id) => `<span class="pill">${esc(PART_BY_ID.get(id)?.name ?? id)}</span>`)
+                    .join('')
+                : '<span class="card-note">Деталей ще немає</span>'
+            }
+          </div>
+        </section>
+
+        <section class="card">
+          <h3>Козирі сезону</h3>
+          <p class="card-note">По одному разу за сезон. Питання не «чи», а «коли».</p>
+          <div class="chips" data-test="chips">
+            ${CHIPS.map((c) => {
+              const used = s.chipsUsed.includes(c.id);
+              const armed = s.armedChip === c.id;
+              const can = canUseChip(s, c.id);
+              return `<button class="chip-card${used ? ' used' : ''}${armed ? ' armed' : ''}"
+                data-chip="${c.id}" data-test="chip-${c.id}" ${used || (!can && !armed) ? 'disabled' : ''}>
+                <b>${esc(c.name)}</b><span>${esc(c.note)}</span>
+                ${used ? '<i>використано</i>' : armed ? '<i>зведено на цей етап</i>' : ''}
+              </button>`;
             }).join('')}
           </div>
         </section>
@@ -234,10 +279,11 @@ function showHub(): void {
         <section class="card">
           <h3>Пілоти</h3>
           <ol class="stand" data-test="driver-standings">
-            ${dStand
+            ${driverStandings(s)
+              .slice(0, 10)
               .map(
                 (r, i) =>
-                  `<li class="${r.isPlayer ? 'mine' : ''}"><span class="n">${i + 1}</span><span class="dot" style="background:${r.color}"></span>${r.name}<b>${r.points}</b></li>`,
+                  `<li class="${r.isPlayer ? 'mine' : ''}"><span class="n">${i + 1}</span><span class="dot" style="background:${r.color}"></span>${esc(r.name)}<b>${r.points}</b></li>`,
               )
               .join('')}
           </ol>
@@ -249,7 +295,7 @@ function showHub(): void {
             ${tStand
               .map(
                 (r, i) =>
-                  `<li class="${r.isPlayer ? 'mine' : ''}"><span class="n">${i + 1}</span><span class="dot" style="background:${r.color}"></span>${r.name}<b>${r.points}</b></li>`,
+                  `<li class="${r.isPlayer ? 'mine' : ''}"><span class="n">${i + 1}</span><span class="dot" style="background:${r.color}"></span>${esc(r.name)}<b>${r.points}</b></li>`,
               )
               .join('')}
           </ol>
@@ -258,19 +304,33 @@ function showHub(): void {
     </div>`;
 
   app.querySelector('[data-test="to-menu"]')!.addEventListener('click', showMenu);
-  app.querySelector('[data-test="start-race"]')!.addEventListener('click', () => {
-    startRace(track.id, s.length, raceSeed(s), teamsForRound(s), s.teamId, s);
-  });
+  app.querySelector('[data-test="start-race"]')!.addEventListener('click', () => showQuali());
 
-  for (const btn of app.querySelectorAll<HTMLButtonElement>('[data-dev]')) {
+  for (const btn of app.querySelectorAll<HTMLButtonElement>('[data-bet]')) {
     btn.addEventListener('click', () => {
-      const area = btn.dataset.dev as DevArea;
-      const cost = devCost(s.development[area]);
-      if (s.rp < cost || s.development[area] >= DEV_MAX) return;
-      s.rp -= cost;
-      s.development[area] += 1;
+      s.nomination = btn.dataset.bet!;
       save(s);
       showHub();
+    });
+  }
+
+  for (const btn of app.querySelectorAll<HTMLButtonElement>('[data-part]')) {
+    btn.addEventListener('click', () => {
+      const part = PART_BY_ID.get(btn.dataset.part!);
+      if (!part || s.rp < part.cost || s.parts.includes(part.id)) return;
+      s.rp -= part.cost;
+      s.parts.push(part.id);
+      save(s);
+      showHub();
+    });
+  }
+
+  for (const btn of app.querySelectorAll<HTMLButtonElement>('[data-chip]')) {
+    btn.addEventListener('click', () => {
+      if (useChip(s, btn.dataset.chip as ChipId)) {
+        save(s);
+        showHub();
+      }
     });
   }
 }
@@ -282,14 +342,91 @@ function showSeasonEnd(): void {
   app.innerHTML = `
     <div class="setup" data-test="season-end">
       <h1>🏆 Сезон завершено</h1>
-      <p class="sub">${tStand[0]!.name} — чемпіон світу серед конструкторів.</p>
-      <p class="hint">Твоя команда: <b>${pos}-е місце</b>, ${tStand[pos - 1]?.points ?? 0} очок за 24 етапи.</p>
+      <p class="sub">${esc(tStand[0]!.name)} — чемпіон світу серед конструкторів.</p>
+      <p class="hint">Твоя команда: <b>${pos}-е місце</b>, ${tStand[pos - 1]?.points ?? 0} очок за 24 етапи.
+      Фірмових трас здобуто: ${s.homeTracks.length}.</p>
       <button class="btn primary big" data-test="restart">Новий сезон</button>
     </div>`;
   app.querySelector('[data-test="restart"]')!.addEventListener('click', () => {
     clearSave();
     showMenu();
   });
+}
+
+// --------------------------------------------------------------- КВАЛА
+
+/**
+ * Екран квали. Тут гравець уперше бачить решітку — і саме тому може один раз
+ * перерішити ставку. Це механіка Final Fix із Fantasy: інформація прийшла,
+ * рішення оновлюється.
+ */
+function showQuali(): void {
+  clearView();
+  const s = season!;
+  const track = currentTrack(s);
+  const teams = teamsForRound(s);
+  const teamMap = new Map(teams.map((t) => [t.id, t]));
+  const seed = raceSeed(s);
+  const quali = runQualifying(track, DRIVERS_2026, teamMap, new Rng(seed ^ 0x51ed));
+  const mine = driversOfTeam(s.teamId).map((d) => d.id);
+
+  const render = () => {
+    app.innerHTML = `
+      <div class="setup wide" data-test="quali">
+        <h1>⏱ Квала · ${esc(track.name)}</h1>
+        <p class="sub">Решітка визначена. Ставку на етап можна перерішити ${s.betFixed ? '— вже використано' : 'один раз'}.</p>
+
+        <table class="grid-table" data-test="grid">
+          <tbody>
+            ${quali
+              .slice(0, 22)
+              .map((q: QualiResult, i) => {
+                const d = DRIVERS_2026.find((x) => x.id === q.driverId)!;
+                const t = teamMap.get(d.teamId)!;
+                const isMine = mine.includes(q.driverId);
+                return `<tr class="${isMine ? 'mine' : ''}">
+                  <td class="pos">${i + 1}</td>
+                  <td><span class="dot" style="background:${t.color}"></span>${esc(d.name)}</td>
+                  <td class="dim">${t.short}</td>
+                  <td class="mono">${fmt(q.time)}${q.spoiled ? ' ⚠' : ''}</td>
+                </tr>`;
+              })
+              .join('')}
+          </tbody>
+        </table>
+
+        <div class="field">
+          <span>Лідер етапу</span>
+          <div class="bet" data-test="bet-quali">
+            ${driversOfTeam(s.teamId)
+              .map((d) => {
+                const gridPos = quali.findIndex((q) => q.driverId === d.id) + 1;
+                return `<button class="bet-opt${s.nomination === d.id ? ' on' : ''}"
+                  data-bet="${d.id}" ${s.betFixed && s.nomination !== d.id ? 'disabled' : ''}>
+                  <b>${esc(d.name)}</b><span>стартує ${gridPos}-м</span></button>`;
+              })
+              .join('')}
+          </div>
+        </div>
+
+        <button class="btn primary big" data-test="to-race">🏁 У ГОНКУ</button>
+      </div>`;
+
+    for (const btn of app.querySelectorAll<HTMLButtonElement>('[data-bet]')) {
+      btn.addEventListener('click', () => {
+        if (s.nomination === btn.dataset.bet) return;
+        s.nomination = btn.dataset.bet!;
+        s.betFixed = true;
+        save(s);
+        render();
+      });
+    }
+    app.querySelector('[data-test="to-race"]')!.addEventListener('click', () => {
+      startRace(track.id, s.length, seed, teams, s.teamId, s, gridFromQuali(quali));
+    });
+  };
+
+  render();
 }
 
 // -------------------------------------------------------------- ГОНКА
@@ -301,10 +438,14 @@ function startRace(
   teams: Team[],
   playerTeamId: string,
   seasonState: SeasonState | null,
+  grid?: string[],
 ): void {
   const track = TRACK_BY_ID.get(trackId)!;
-  const teamMap = new Map(teams.map((t) => [t.id, t]));
-  const quali = runQualifying(track, DRIVERS_2026, teamMap, new Rng(seed ^ 0x51ed));
+  let startGrid = grid;
+  if (!startGrid) {
+    const teamMap = new Map(teams.map((t) => [t.id, t]));
+    startGrid = gridFromQuali(runQualifying(track, DRIVERS_2026, teamMap, new Rng(seed ^ 0x51ed)));
+  }
 
   clearView();
   view = new RaceView(app, {
@@ -313,7 +454,7 @@ function startRace(
     teams,
     length,
     seed,
-    grid: gridFromQuali(quali),
+    grid: startGrid,
     playerTeamId,
     onFinish: (race) => showResults(race, seasonState, trackId),
   });
@@ -321,21 +462,43 @@ function startRace(
 
 function showResults(race: Race, seasonState: SeasonState | null, trackId: string): void {
   const classification = race.classification();
-  let scored = 0;
-  let best = 0;
+  let summary = '';
 
   if (seasonState) {
+    const mine = classification.filter((c) => c.team.id === seasonState.teamId);
+    const preview = computeRp(seasonState, mine);
+    const nominated = mine.find((c) => c.driver.id === seasonState.nomination);
+    const wasHome = seasonState.homeTracks.includes(trackId);
     const rec = recordRace(seasonState, classification, trackId);
-    scored = rec.pointsScored;
-    best = rec.bestPosition;
     save(seasonState);
+
+    const betLine = nominated
+      ? nominated.status === 'dnf'
+        ? `Ставка на ${nominated.driver.short} згоріла — схід.`
+        : nominated.points === 0
+          ? `Ставка на ${nominated.driver.short} не зіграла — поза очками.`
+          : `Ставка на ${nominated.driver.short} зіграла: ${nominated.points} очок подвійно.`
+      : '';
+    const newHome =
+      !wasHome && seasonState.homeTracks.includes(trackId)
+        ? ' <b>Перемога! Траса стала фірмовою.</b>'
+        : '';
+
+    summary = `<p class="results-sum" data-test="results-summary">
+      Найкраща позиція <b>P${rec.bestPosition || '—'}</b>, очок <b>${rec.pointsScored}</b>.
+      ${betLine}${newHome}<br>
+      RP: база ${preview.base} + очки ${preview.fromPoints} + відіграні позиції
+      ${preview.fromGained} + ставка ${preview.fromBet >= 0 ? '+' : ''}${preview.fromBet}
+      ${preview.chipMultiplier > 1 ? ` × козир ${preview.chipMultiplier}` : ''}
+      = <b>${rec.rp.total} RP</b>
+    </p>`;
   }
 
   const rows = classification
     .map((c) => {
       const gap =
         c.status === 'dnf'
-          ? `<i>сход — ${c.dnfReason}</i>`
+          ? `<i>сход — ${esc(c.dnfReason ?? '')}</i>`
           : c.position === 1
             ? fmt(c.totalTime)
             : `+${(c.gap ?? 0).toFixed(3)}`;
@@ -346,11 +509,21 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
         )
         .join('');
       const mine = seasonState ? c.team.id === seasonState.teamId : false;
+      const gainTag =
+        c.status === 'dnf'
+          ? ''
+          : c.gained > 0
+            ? `<span class="gain up">+${c.gained}</span>`
+            : c.gained < 0
+              ? `<span class="gain down">${c.gained}</span>`
+              : '<span class="gain">=</span>';
+      const pen = c.penalty > 0 ? `<span class="pen" title="${esc(c.penaltyReason ?? '')}">+${c.penalty}с</span>` : '';
       return `<tr class="${c.status === 'dnf' ? 'out' : ''}${mine ? ' mine' : ''}">
         <td class="pos">${c.status === 'dnf' ? '—' : c.position}</td>
-        <td><span class="dot" style="background:${c.team.color}"></span>${c.driver.name}</td>
+        <td><span class="dot" style="background:${c.team.color}"></span>${esc(c.driver.name)}</td>
         <td class="dim">${c.team.short}</td>
-        <td class="mono">${gap}</td>
+        <td>${gainTag}</td>
+        <td class="mono">${gap} ${pen}</td>
         <td>${c.stops}</td>
         <td>${comps}</td>
         <td class="pts">${c.points || ''}${c.fastestLap ? ' ⚡' : ''}</td>
@@ -363,14 +536,10 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
   panel.dataset.test = 'results';
   panel.innerHTML = `
     <div class="results">
-      <h2>🏁 ${race.track.name}</h2>
-      ${
-        seasonState
-          ? `<p class="results-sum" data-test="results-summary">Команда: найкраща позиція <b>P${best || '—'}</b>, зароблено <b>${scored}</b> очок. Розробка: <b>+${3 + Math.round(scored / 4)} RP</b>.</p>`
-          : ''
-      }
+      <h2>🏁 ${esc(race.track.name)}</h2>
+      ${summary}
       <table>
-        <thead><tr><th></th><th>Пілот</th><th></th><th>Гап</th><th>Піт</th><th>Суміші</th><th>Очки</th></tr></thead>
+        <thead><tr><th></th><th>Пілот</th><th></th><th>±</th><th>Гап</th><th>Піт</th><th>Суміші</th><th>Очки</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       <button class="btn primary" data-test="results-next">${seasonState ? 'До штабу' : 'До меню'}</button>
@@ -386,5 +555,6 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
 // Гачок для E2E: дає тестам доступ до живої гонки, щоб перевіряти стан
 // симуляції, а не текст на екрані. Типізований в e2e/globals.d.ts.
 (window as unknown as { __race: () => RaceView | null }).__race = () => view;
+(window as unknown as { __season: () => SeasonState | null }).__season = () => season;
 
 showMenu();

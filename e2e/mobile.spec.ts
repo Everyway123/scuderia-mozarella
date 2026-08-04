@@ -22,6 +22,9 @@ test('E5: на телефоні немає горизонтального скр
   await noOverflow('штаб');
 
   await page.click('[data-test="start-race"]');
+  await expect(page.locator('[data-test="quali"]')).toBeVisible();
+  await noOverflow('квала');
+  await page.click('[data-test="to-race"]');
   await expect(page.locator('#trackCanvas')).toBeVisible();
   await noOverflow('гонка');
 

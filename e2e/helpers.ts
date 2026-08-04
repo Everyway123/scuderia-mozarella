@@ -39,13 +39,20 @@ export async function pickLength(page: Page, len: 25 | 50 | 100): Promise<void> 
   await page.click(`#lenSeg button[data-len="${len}"]`);
 }
 
-/** Меню → сезон → штаб → старт гонки. */
+/** Меню → сезон → штаб → квала → старт гонки. */
 export async function startSeasonRace(page: Page, teamId = 'haas'): Promise<void> {
   await pickTeam(page, teamId);
   await pickLength(page, 25);
   await page.click('[data-test="new-season"]');
   await expect(page.locator('[data-test="hub"]')).toBeVisible();
+  await goFromHubToRace(page);
+}
+
+/** Штаб → квала → гонка. Квала — окремий екран, де можна перерішити ставку. */
+export async function goFromHubToRace(page: Page): Promise<void> {
   await page.click('[data-test="start-race"]');
+  await expect(page.locator('[data-test="quali"]')).toBeVisible();
+  await page.click('[data-test="to-race"]');
   await expect(page.locator('#trackCanvas')).toBeVisible();
 }
 
@@ -180,4 +187,53 @@ export async function playThrough(
     await page.waitForTimeout(250);
   }
   return answered;
+}
+
+// ---------------------------------------------------------------------------
+// Пошук seed для сценаріїв.
+//
+// Прив'язка до конкретного числа ламалась ЧОТИРИ рази поспіль: будь-яка зміна
+// калібрування зсуває потік RNG, і подія переїжджає на інше коло. Тому тест
+// тепер сам знаходить собі seed тим самим движком, яким грає застосунок.
+// ---------------------------------------------------------------------------
+
+import { DRIVERS_2026 } from '../src/data/drivers2026.ts';
+import { TEAMS_2026 } from '../src/data/teams2026.ts';
+import { TRACK_BY_ID } from '../src/data/tracks2026.ts';
+import { gridFromQuali, runQualifying } from '../src/sim/qualifying.ts';
+import { Race } from '../src/sim/raceEngine.ts';
+import { Rng } from '../src/sim/rng.ts';
+
+/** Прогін гонки рівно так, як це робить екран швидкої гонки. */
+function probe(trackId: string, seed: number, teamId: string) {
+  const track = TRACK_BY_ID.get(trackId)!;
+  const teamMap = new Map(TEAMS_2026.map((t) => [t.id, t]));
+  const quali = runQualifying(track, DRIVERS_2026, teamMap, new Rng(seed ^ 0x51ed));
+  const race = new Race({
+    track,
+    drivers: DRIVERS_2026,
+    teams: TEAMS_2026,
+    length: 25,
+    seed,
+    grid: gridFromQuali(quali),
+    playerTeamId: teamId,
+  });
+  race.runToEnd();
+  return race.state.events;
+}
+
+/** Перші кілька seed, на яких потрібна подія трапляється рано. */
+export function seedsWithEvent(
+  trackId: string,
+  kind: 'safety-car' | 'weather',
+  maxLap: number,
+  want = 3,
+  teamId = 'haas',
+): number[] {
+  const found: number[] = [];
+  for (let seed = 1; seed <= 200 && found.length < want; seed++) {
+    const first = probe(trackId, seed, teamId).find((e) => e.kind === kind);
+    if (first && first.lap <= maxLap) found.push(seed);
+  }
+  return found;
 }

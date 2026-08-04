@@ -1,5 +1,8 @@
-// E3 і E8 — моменти рішення. Seed'и підібрані детерміновано: на них
-// сейфті-кар і дощ приходять рано, тож сценарій не залежить від удачі.
+// E3 і E8 — моменти рішення.
+//
+// Seed'и не захардкоджені: тест сам знаходить їх тим самим движком, яким грає
+// застосунок. Прив'язка до конкретного числа ламалась чотири рази поспіль —
+// будь-яка зміна калібрування зсуває потік RNG, і подія переїжджає.
 
 import { expect, test } from '@playwright/test';
 import {
@@ -9,6 +12,7 @@ import {
   playAnswering,
   playThrough,
   raceState,
+  seedsWithEvent,
   waitForPrompt,
 } from './helpers.ts';
 
@@ -25,13 +29,14 @@ async function quickRace(page: import('@playwright/test').Page, trackId: string,
 test('E3: сейфті-кар піднімає запит, і відповідь заводить машини в бокси', async ({ page }) => {
   const errors = await openApp(page);
 
-  // Монако — найбільш «сейфті-карна» траса календаря. Seed'и підібрані тим
-  // самим кодом, яким гру запускає застосунок: разом із квалою, бо стартова
-  // решітка теж витрачає RNG і зсуває всі подальші події.
-  // Перебираємо кілька — прив'язка до одного числа вже двічі ламала сценарій.
+  // Seed знаходимо тим самим движком, яким грає застосунок, а не хардкодимо:
+  // будь-яка зміна калібрування зсуває RNG і переносить подію на інше коло.
+  const seeds = seedsWithEvent('monaco', 'safety-car', 5, 3);
+  expect(seeds.length, 'жоден seed не дає раннього сейфті-кара').toBeGreaterThan(0);
+
   const prompt = page.locator('.prompt.on');
   let got = false;
-  for (const seed of [4, 10, 26]) {
+  for (const seed of seeds) {
     await quickRace(page, 'monaco', seed);
     // Без прискорення 30 секунд очікування покривають лише кілька кіл —
     // саме на цьому сценарій і вичерпував таймаут
@@ -77,7 +82,8 @@ test('E3: сейфті-кар піднімає запит, і відповідь
 
 test('E3b: гра зупиняється 5–9 разів за гонку (критерій G2)', async ({ page }) => {
   const errors = await openApp(page);
-  await quickRace(page, 'baku', 2);
+  const scSeed = seedsWithEvent('baku', 'safety-car', 6, 1)[0] ?? 2;
+  await quickRace(page, 'baku', scSeed);
   await playThrough(page, { maxSeconds: 90 });
 
   const s = await raceState(page);
@@ -90,12 +96,16 @@ test('E3b: гра зупиняється 5–9 разів за гонку (кр�
 test('E8: рішення про дощ доходить до машин і міняє гонку', async ({ page }) => {
   const errors = await openApp(page);
 
-  // Сільверстоун, seed 12: дощ приходить одразу.
+  // Seed так само шукаємо движком, а не хардкодимо.
   // Два прогони різняться РІВНО одним рішенням — реакцією на дощ.
   // Ціну помилки в позиціях міряє headless-тест G5 на 24 трасах;
   // тут доводимо, що рішення з екрана справді доходить до симуляції.
+  const wetSeeds = seedsWithEvent('silverstone', 'weather', 3, 1);
+  expect(wetSeeds.length, 'жоден seed не дає раннього дощу').toBeGreaterThan(0);
+  const wetSeed = wetSeeds[0]!;
+
   const runWith = async (onRain: 'first' | 'last') => {
-    await quickRace(page, 'silverstone', 12);
+    await quickRace(page, 'silverstone', wetSeed);
     const got = await waitForPrompt(page, 'rain', 60);
     expect(got, 'запит про дощ так і не зʼявився').toBe(true);
 

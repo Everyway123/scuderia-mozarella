@@ -109,6 +109,8 @@ export interface CarState {
   /** Пройдено кіл. */
   lap: number;
   position: number;
+  /** Позиція на старті — потрібна, щоб рахувати відіграні місця. */
+  startPosition: number;
   tyre: TyreState;
   fuelKg: number;
   /** Заряд батареї, МДж. */
@@ -132,9 +134,11 @@ export interface CarState {
   /** Скільки кіл поспіль не може проїхати суперника. */
   stuckLaps: number;
   dnfReason: string | null;
-  /** Післягоночний штраф, с. Наразі — за невиконане правило двох сумішей. */
+  /** Післягоночний штраф, с: правило двох сумішей, стюарди. */
   penalty: number;
   penaltyReason: string | null;
+  /** Скільки разів отримував увагу стюардів — для радіо й розбору. */
+  penalties: number;
   isPlayer: boolean;
   /**
    * Чи планує піт-стопи ШІ. Для машин гравця темп, енергія й Override завжди його,
@@ -162,6 +166,7 @@ export interface RaceEvent {
     | 'weather'
     | 'radio'
     | 'flat-spot'
+    | 'penalty'
     | 'start';
   driverId?: string;
   otherId?: string;

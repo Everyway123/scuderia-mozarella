@@ -33,6 +33,18 @@ interface RaceViewHandle {
   };
 }
 
+interface SeasonHandle {
+  round: number;
+  rp: number;
+  nomination: string | null;
+  betFixed: boolean;
+  parts: string[];
+  chipsUsed: string[];
+  armedChip: string | null;
+  homeTracks: string[];
+}
+
 interface Window {
   __race?: () => RaceViewHandle | null;
+  __season?: () => SeasonHandle | null;
 }

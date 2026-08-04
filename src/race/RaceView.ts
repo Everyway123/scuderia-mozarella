@@ -4,6 +4,7 @@
 // миті й ні на коло далі — інакше наказ гравця застосувався б у вже
 // порахованому майбутньому. Одне коло затримки — це і є радіо на пітволі.
 
+import { COMPOUNDS } from '../sim/constants.ts';
 import { fmt, Race } from '../sim/raceEngine.ts';
 import type { CompoundId, Driver, RaceLength, Team, Track } from '../sim/types.ts';
 import { PitwallPanel } from './PitwallPanel.ts';
@@ -246,7 +247,43 @@ export class RaceView {
       return;
     }
 
-    // 4. Суперник у зоні Override — момент для атаки.
+    // 4. Плановий заїзд на носі. Це єдиний момент рішення, який трапляється
+    //    в КОЖНІЙ гонці — без нього чиста суха гонка виходила німою: один
+    //    запит за весь етап, і гравець знову глядач.
+    for (const car of alive) {
+      const advice = this.race.advice(car.driverId);
+      if (!advice || !Number.isFinite(advice.nextPitLap)) continue;
+      if (advice.nextPitLap - lap !== 1) continue;
+      const key = `pit-${car.driverId}-${car.stops}`;
+      if (this.firedPrompts.has(key)) continue;
+      if (state.totalLaps - lap < 4) continue;
+      this.firedPrompts.add(key);
+
+      const short = this.driverMap.get(car.driverId)!.short;
+      const next = advice.nextCompound ?? compound;
+      this.ask({
+        id: 'pitwindow',
+        title: `🔧 ${short}: ЗАЇЗД НАСТУПНОГО КОЛА`,
+        sub: `За планом ${COMPOUNDS[next].label}. Знос ${Math.round(car.tyre.wear * 100)}% — можна й потягнути.`,
+        actions: [
+          {
+            label: `Заїжджаємо (${COMPOUNDS[next].label})`,
+            primary: true,
+            act: () => this.race.order({ driverId: car.driverId, pit: next }),
+          },
+          {
+            label: 'Тягнемо ще три кола',
+            act: () => {
+              this.race.delayPit(car.driverId, 3);
+              this.race.order({ driverId: car.driverId, paceMode: 2 });
+            },
+          },
+        ],
+      });
+      return;
+    }
+
+    // 5. Суперник у зоні Override — момент для атаки.
     //    На перших колах пелотон і так їде щільно, тож питати там немає сенсу:
     //    це був би спам, який знецінює справді важливі зупинки.
     if (lap >= 4 && this.overridePrompts < 2 && lap - this.lastOverridePromptLap >= 5) {

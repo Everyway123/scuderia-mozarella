@@ -1,7 +1,15 @@
 // Випадковість: сходи, сейфті-кар, погода, помилки пілотів.
 // Усе через seeded RNG — щоб гонку можна було відтворити.
 
-import { DNF_PER_RACE, PACE_RISK, SC_MAX_LAPS, SC_MIN_LAPS } from './constants.ts';
+import {
+  DNF_PER_RACE,
+  PACE_RISK,
+  SC_MAX_LAPS,
+  SC_MIN_LAPS,
+  STEWARD_BASE,
+  STEWARD_DUEL_RISK,
+  STEWARD_PACE_RISK,
+} from './constants.ts';
 import type { Rng } from './rng.ts';
 import type { CarState, Driver, RaceState, Team, Track, WeatherState } from './types.ts';
 
@@ -129,4 +137,39 @@ export function pitStopTime(team: Team, rng: Rng): number {
   // Затримок буває більше, ніж ідеальних стоянок — асиметричний хвіст
   if (rng.chance(0.05)) return t + rng.range(1.5, 6.0);
   return Math.max(1.9, t);
+}
+
+const PENALTY_REASONS = [
+  'вихід за межі траси',
+  'зіткнення в боротьбі',
+  'небезпечне зближення',
+  'виїзд із боксів через суцільну',
+];
+
+/**
+ * Стюарди. Агресивний темп і невдалі спроби обгону дають шанс отримати
+ * п'ятисекундний штраф.
+ *
+ * Це не косметика: без штрафів режим «Атака» коштував лише гуми, і той самий
+ * прорахунок робив за гравця ШІ. Ризик, від якого штатний стратег тікає,
+ * а сміливий гравець може його прийняти, — це і є простір для рішення.
+ */
+export function checkStewards(
+  car: CarState,
+  driver: Driver,
+  duelledAndFailed: boolean,
+  totalLaps: number,
+  referenceLaps: number,
+  rng: Rng,
+): string | null {
+  const paceRisk = STEWARD_PACE_RISK[car.paceMode];
+  const duel = duelledAndFailed ? STEWARD_DUEL_RISK : 1;
+  const style = 0.6 + 0.9 * driver.aggression;
+  const sloppy = 1 + (1 - driver.consistency) * 0.7;
+  // Ризик заданий на еталонну дистанцію й ділиться на реальну кількість кіл,
+  // тому Монако з 78 колами не карає більше за Спа з 44
+  const scale = referenceLaps / Math.max(1, totalLaps);
+
+  const p = STEWARD_BASE * paceRisk * duel * style * sloppy * scale;
+  return rng.chance(p) ? rng.pick(PENALTY_REASONS) : null;
 }

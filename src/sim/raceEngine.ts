@@ -10,10 +10,18 @@ import {
   OVERRIDE_PER_RACE,
   OVERRIDE_WINDOW,
   POINTS,
+  STEWARD_PENALTY,
   TWO_COMPOUND_PENALTY,
 } from './constants.ts';
 import { computeLap, fuelBurn, startingFuel } from './lapModel.ts';
-import { checkDnf, checkMistake, checkSafetyCar, pitStopTime, planWeather } from './incidents.ts';
+import {
+  checkDnf,
+  checkMistake,
+  checkSafetyCar,
+  checkStewards,
+  pitStopTime,
+  planWeather,
+} from './incidents.ts';
 import { duel } from './overtaking.ts';
 import { Rng } from './rng.ts';
 import {
@@ -47,6 +55,9 @@ import type {
  * ті самі 20 секунд, а відігравати їх нема на чому. Зі стисненням гумова
  * історія повної гонки повністю зберігається — і гравцю є що вирішувати.
  */
+/** Еталонна дистанція, до якої нормуються ризики «на гонку». */
+export const REFERENCE_LAPS = 57;
+
 export function compressTrack(track: Track, totalLaps: number): Track {
   const c = track.laps / totalLaps;
   if (c <= 1) return { ...track, compression: 1 };
@@ -85,6 +96,8 @@ export class Race {
   private readonly weatherScript: WeatherState[];
   /** Чи була гонка мокрою — від цього залежить, чи діє правило двох сумішей. */
   private everWet = false;
+  /** Хто цього кола не проїхав суперника — у них вищий шанс уваги стюардів. */
+  private readonly failedDuels = new Set<string>();
 
   constructor(setup: RaceSetup) {
     this.rng = new Rng(setup.seed);
@@ -144,6 +157,7 @@ export class Race {
       totalTime: 0,
       lap: 0,
       position,
+      startPosition: position,
       tyre: freshTyre('medium'),
       fuelKg: startingFuel(this.track, laps, FUEL_MARGIN_KG),
       energyMJ: BATTERY_MAX,
@@ -161,6 +175,7 @@ export class Race {
       dnfReason: null,
       penalty: 0,
       penaltyReason: null,
+      penalties: 0,
       isPlayer: driver.teamId === this.playerTeamId,
       autoStrategy: true,
       manualPace: false,
@@ -181,7 +196,7 @@ export class Race {
         car.compoundsUsed.filter((c) => c === 'soft' || c === 'medium' || c === 'hard'),
       );
       if (dry.size >= 2) continue;
-      car.penalty = TWO_COMPOUND_PENALTY;
+      car.penalty += TWO_COMPOUND_PENALTY;
       car.penaltyReason = 'не виконано правило двох сумішей';
       car.totalTime += TWO_COMPOUND_PENALTY;
       this.log('radio', `${this.drivers.get(car.driverId)!.short}: +30 с — одна суміш за гонку`);
@@ -234,6 +249,15 @@ export class Race {
 
   team(id: string): Team | undefined {
     return this.teams.get(id);
+  }
+
+  /**
+   * Відкласти плановий заїзд. Це відповідь гравця на питання «тягнемо ще?» —
+   * без неї варіант «тягнемо» був би порожнім: ШІ все одно заїхав би цього кола.
+   */
+  delayPit(driverId: string, laps: number): void {
+    const brain = this.brains.get(driverId);
+    if (brain && Number.isFinite(brain.nextPitLap)) brain.nextPitLap += laps;
   }
 
   /** Що радить стратег для цієї машини — те саме, з чим бореться гравець. */
@@ -396,6 +420,28 @@ export class Race {
       if (s.flag === 'green' && t < car.bestLap) car.bestLap = t;
     }
 
+    // 4.5 Стюарди. Перевіряємо після боротьби, бо невдала спроба обгону —
+    //     головна причина уваги стюардів.
+    for (const car of running) {
+      if (car.status === 'dnf') continue;
+      const driver = this.drivers.get(car.driverId)!;
+      const reason = checkStewards(
+        car,
+        driver,
+        this.failedDuels.has(car.driverId),
+        s.totalLaps,
+        REFERENCE_LAPS,
+        this.rng,
+      );
+      if (!reason) continue;
+      car.penalty += STEWARD_PENALTY;
+      car.penalties += 1;
+      car.penaltyReason = reason;
+      car.totalTime += STEWARD_PENALTY;
+      this.log('penalty', `${driver.short}: +5 с — ${reason}`, car.driverId);
+    }
+    this.failedDuels.clear();
+
     // 5. Найшвидше коло
     for (const car of running) {
       if (s.flag !== 'green') break;
@@ -508,6 +554,7 @@ export class Race {
         lapTimes.set(attacker.driverId, held);
         lapTimes.set(defender.driverId, lapTimes.get(defender.driverId)! + result.defenderCost);
         attacker.stuckLaps += 1;
+        this.failedDuels.add(attacker.driverId);
 
         if (attacker.stuckLaps === 3 && attacker.isPlayer) {
           this.log(
@@ -583,6 +630,8 @@ export class Race {
         dnfReason: car.dnfReason,
         penalty: car.penalty,
         penaltyReason: car.penaltyReason,
+        startPosition: car.startPosition,
+        gained: car.status === 'dnf' ? 0 : car.startPosition - (i + 1),
         points:
           car.status === 'dnf' ? 0 : (POINTS[i] ?? 0) + (fl && i < 10 ? 1 : 0),
         fastestLap: fl,
@@ -604,6 +653,10 @@ export interface ClassifiedCar {
   dnfReason: string | null;
   penalty: number;
   penaltyReason: string | null;
+  /** Позиція на старті. */
+  startPosition: number;
+  /** Відіграні місця: додатне — піднявся, відʼємне — відкотився. */
+  gained: number;
   points: number;
   fastestLap: boolean;
 }
