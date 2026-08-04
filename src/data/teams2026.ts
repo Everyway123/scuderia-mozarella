@@ -18,6 +18,7 @@ export const TEAMS_2026: Team[] = [
     reliability: 0.85,
     pitCrew: 2.35,
     pitCrewSd: 0.22,
+    strategy: 0.92,
   },
   {
     id: 'mclaren',
@@ -29,6 +30,7 @@ export const TEAMS_2026: Team[] = [
     reliability: 0.9,
     pitCrew: 2.25,
     pitCrewSd: 0.18,
+    strategy: 0.9,
   },
   {
     id: 'redbull',
@@ -40,6 +42,7 @@ export const TEAMS_2026: Team[] = [
     reliability: 1.4,
     pitCrew: 2.2,
     pitCrewSd: 0.17,
+    strategy: 0.88,
   },
   {
     id: 'ferrari',
@@ -51,6 +54,7 @@ export const TEAMS_2026: Team[] = [
     reliability: 1.0,
     pitCrew: 2.4,
     pitCrewSd: 0.24,
+    strategy: 0.76,
   },
   {
     id: 'williams',
@@ -62,6 +66,7 @@ export const TEAMS_2026: Team[] = [
     reliability: 0.95,
     pitCrew: 2.55,
     pitCrewSd: 0.28,
+    strategy: 0.8,
   },
   {
     id: 'aston',
@@ -73,6 +78,7 @@ export const TEAMS_2026: Team[] = [
     reliability: 1.1,
     pitCrew: 2.5,
     pitCrewSd: 0.26,
+    strategy: 0.72,
   },
   {
     id: 'racingbulls',
@@ -84,6 +90,7 @@ export const TEAMS_2026: Team[] = [
     reliability: 1.3,
     pitCrew: 2.45,
     pitCrewSd: 0.25,
+    strategy: 0.74,
   },
   {
     id: 'audi',
@@ -95,6 +102,7 @@ export const TEAMS_2026: Team[] = [
     reliability: 1.5,
     pitCrew: 2.6,
     pitCrewSd: 0.3,
+    strategy: 0.68,
   },
   {
     id: 'alpine',
@@ -106,6 +114,7 @@ export const TEAMS_2026: Team[] = [
     reliability: 1.2,
     pitCrew: 2.7,
     pitCrewSd: 0.32,
+    strategy: 0.64,
   },
   {
     id: 'haas',
@@ -117,6 +126,7 @@ export const TEAMS_2026: Team[] = [
     reliability: 1.0,
     pitCrew: 2.65,
     pitCrewSd: 0.3,
+    strategy: 0.7,
   },
   {
     id: 'cadillac',
@@ -128,6 +138,7 @@ export const TEAMS_2026: Team[] = [
     reliability: 1.7,
     pitCrew: 2.85,
     pitCrewSd: 0.38,
+    strategy: 0.58,
   },
 ];
 

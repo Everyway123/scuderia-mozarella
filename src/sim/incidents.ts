@@ -20,11 +20,14 @@ export function checkDnf(
   team: Team,
   driver: Driver,
   rng: Rng,
+  compression = 1,
 ): string | null {
   const stress = PACE_RISK[car.paceMode];
   // Нестабільний пілот частіше ловить помилку, що закінчується стіною
   const errorProne = 1 + (1 - driver.consistency) * 0.8;
-  const p = DNF_BASE * team.reliability * stress * errorProne;
+  // У стиснутій гонці кіл менше, тому ризик на коло має бути пропорційно вищим —
+  // інакше спринт майже без сходів, а це вже інша гра
+  const p = DNF_BASE * team.reliability * stress * errorProne * compression;
 
   if (rng.chance(p)) {
     // Помилка пілота чи техніка — від режиму темпу залежить, що саме
@@ -103,8 +106,9 @@ export function checkMistake(
   driver: Driver,
   underPressure: boolean,
   rng: Rng,
+  compression = 1,
 ): { cost: number; text: string } | null {
-  let p = 0.012 * (1 - driver.consistency) * PACE_RISK[car.paceMode];
+  let p = 0.012 * (1 - driver.consistency) * PACE_RISK[car.paceMode] * compression;
   if (underPressure) p *= 2.1;
   if (car.tyre.wear > 0.85) p *= 1.6;
 

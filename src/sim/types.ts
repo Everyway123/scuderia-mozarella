@@ -30,6 +30,12 @@ export interface Team {
   pitCrew: number;
   /** Розкид часу стоянки (sd), с. */
   pitCrewSd: number;
+  /**
+   * Якість роботи стратега команди, 0..1. Слабші команди пізніше реагують на
+   * сейфті-кар і кліф гуми. Саме тут гравець додає цінність: його рішення
+   * миттєві, а рішення штатного інженера — ні.
+   */
+  strategy: number;
 }
 
 export interface Driver {
@@ -111,6 +117,8 @@ export interface CarState {
   overrideLeft: number;
   /** Override увімкнений на це коло. */
   overrideArmed: boolean;
+  /** Чи керує Override гравець вручну. Поки false — вмикається автоматично. */
+  manualOverride: boolean;
   paceMode: PaceMode;
   energyMode: EnergyMode;
   stops: number;
@@ -124,7 +132,22 @@ export interface CarState {
   /** Скільки кіл поспіль не може проїхати суперника. */
   stuckLaps: number;
   dnfReason: string | null;
+  /** Післягоночний штраф, с. Наразі — за невиконане правило двох сумішей. */
+  penalty: number;
+  penaltyReason: string | null;
   isPlayer: boolean;
+  /**
+   * Чи планує піт-стопи ШІ. Для машин гравця темп, енергія й Override завжди його,
+   * а стратегію за замовчуванням веде ШІ — інакше новачок просто не заїде в бокси
+   * й помре на мертвій гумі. Вимикається кнопкою «вручну».
+   */
+  autoStrategy: boolean;
+  /**
+   * Чи взяв гравець темп під ручне керування. Поки false — темпом керує той
+   * самий контролер, що й у суперників. Інакше гравець, який нічого не чіпає,
+   * отримував би свідомо гіршу машину, ніж та сама машина під ШІ.
+   */
+  manualPace: boolean;
 }
 
 export interface RaceEvent {
@@ -167,4 +190,7 @@ export interface PitwallOrder {
   energyMode?: EnergyMode;
   pit?: CompoundId | null;
   override?: boolean;
+  autoStrategy?: boolean;
+  /** Повернути темп під керування інженера. */
+  autoPace?: boolean;
 }

@@ -150,6 +150,8 @@ export interface AiBrain {
   nextPitLap: number;
   /** Чи вже скористався вікном сейфті-кара. */
   usedScWindow: boolean;
+  /** Скільки кіл штатний стратег уже вагається змінити гуму під погоду. */
+  weatherHesitation: number;
 }
 
 export function createBrain(plan: StrategyPlan, rng: Rng): AiBrain {
@@ -160,6 +162,7 @@ export function createBrain(plan: StrategyPlan, rng: Rng): AiBrain {
     stintIndex: 0,
     nextPitLap: Math.max(3, (plan.stints[0]?.laps ?? 20) + jitter),
     usedScWindow: false,
+    weatherHesitation: 0,
   };
 }
 
@@ -210,9 +213,15 @@ export function decidePit(
   state: RaceState,
   track: Track,
   driver: Driver,
+  quality = 1,
+  rng?: Rng,
 ): PitDecision | null {
   const lapsLeft = state.totalLaps - car.lap;
   if (lapsLeft <= 1) return null;
+
+  // Наскільки тугий цей штатний стратег: 0 — бездоганний, 1 — безнадійний.
+  // Саме ця затримка й лишає простір гравцеві: його рішення миттєве.
+  const sloppy = 1 - quality;
 
   const pick = (reason: PitReason): PitDecision => ({
     compound: nextCompound(brain, car, state, state.weather),
@@ -223,14 +232,25 @@ export function decidePit(
   const wrongTyre =
     (state.weather !== 'dry' && dryTyre) || (state.weather === 'dry' && !dryTyre);
 
-  // 1. Не та гума під погоду — заїжджати негайно, це коштує секунди на коло
-  if (wrongTyre) return pick('weather');
+  // 1. Не та гума під погоду. Слабкий стратег вагається зайве коло-два —
+  //    у дощ це найдорожча затримка в гонці.
+  if (wrongTyre) {
+    brain.weatherHesitation += 1;
+    if (brain.weatherHesitation > Math.round(sloppy * 4)) return pick('weather');
+    return null;
+  }
+  brain.weatherHesitation = 0;
 
   // 2. Вікно сейфті-кара — піт коштує вдвічі дешевше, гріх не скористатись.
   //    Але тільки якщо плановий заїзд і так уже не за горами: інакше це
   //    просто зайва зупинка, за яку потім доведеться платити ще однією.
   const planSoon = brain.nextPitLap - car.lap <= Math.max(6, lapsLeft * 0.35);
   if (state.flag !== 'green' && !brain.usedScWindow && lapsLeft > 6 && planSoon) {
+    // Слабка команда просто не встигає зреагувати на відкрите вікно
+    if (rng && !rng.chance(quality)) {
+      brain.usedScWindow = true;
+      return null;
+    }
     brain.usedScWindow = true;
     return pick('safety-car');
   }

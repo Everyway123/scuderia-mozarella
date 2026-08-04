@@ -24,6 +24,7 @@ function car(overrides: Partial<CarState> = {}): CarState {
     energyMJ: 4,
     overrideLeft: 8,
     overrideArmed: false,
+    manualOverride: false,
     paceMode: 3,
     energyMode: 'balance',
     stops: 0,
@@ -33,7 +34,11 @@ function car(overrides: Partial<CarState> = {}): CarState {
     bestLap: Infinity,
     stuckLaps: 0,
     dnfReason: null,
+    penalty: 0,
+    penaltyReason: null,
     isPlayer: false,
+    autoStrategy: true,
+    manualPace: false,
     ...overrides,
   };
 }

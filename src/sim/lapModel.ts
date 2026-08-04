@@ -75,8 +75,20 @@ export function computeLap(car: CarState, ctx: LapContext): LapResult {
   const sd = LAP_NOISE_MAX - (LAP_NOISE_MAX - LAP_NOISE_MIN) * driver.consistency;
   const noise = rng.gauss(0, sd);
 
-  let time =
-    base + fuel + tyre + pace + carPace + driverPace + energy.timeDelta + dirty + wet + evo + noise;
+  // Стиснення гонки має бути послідовним. Гума вже масштабована всередині
+  // tyreDelta, паливо — через fuelPerLap. Але темп, енергія, брудне повітря
+  // й перевага боліда теж накопичуються за дистанцію: у стиснутій гонці
+  // одне коло «коштує» c справжніх, тож і вони множаться на c.
+  //
+  // Без цього виходив перекіс, який убивав саму гру: знос наприкінці стінта
+  // давав десяток секунд на колі, а важіль темпу — пів секунди. Рішення
+  // гравця ставали шумом, і пасивна гра обігравала будь-яку стратегію.
+  const c = track.compression ?? 1;
+  const perLap = (pace + carPace + driverPace + energy.timeDelta + dirty + wet + evo) * c;
+  // Шум — сума незалежних кіл, тому росте як корінь, а не лінійно
+  const scaledNoise = noise * Math.sqrt(c);
+
+  let time = base + fuel + tyre + perLap + scaledNoise;
 
   // Під жовтими прапорами темп задає не болід
   if (ctx.flag === 'safety-car') time = base * SC_LAP_FACTOR;

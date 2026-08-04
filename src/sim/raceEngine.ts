@@ -10,6 +10,7 @@ import {
   OVERRIDE_PER_RACE,
   OVERRIDE_WINDOW,
   POINTS,
+  TWO_COMPOUND_PENALTY,
 } from './constants.ts';
 import { computeLap, fuelBurn, startingFuel } from './lapModel.ts';
 import { checkDnf, checkMistake, checkSafetyCar, pitStopTime, planWeather } from './incidents.ts';
@@ -66,8 +67,8 @@ export interface RaceSetup {
   seed: number;
   /** Стартова решітка — id пілотів у порядку позицій. Немає — беремо порядок drivers. */
   grid?: string[];
-  /** Пілот гравця. */
-  playerDriverId?: string;
+  /** Команда гравця — під його керуванням обидві її машини. */
+  playerTeamId?: string;
 }
 
 export class Race {
@@ -79,13 +80,15 @@ export class Race {
   private readonly teams = new Map<string, Team>();
   private readonly brains = new Map<string, AiBrain>();
   private readonly rng: Rng;
-  private readonly playerId: string | null;
+  private readonly playerTeamId: string | null;
   /** Погода розписана наперед — гравець бачить її лише через прогноз. */
   private readonly weatherScript: WeatherState[];
+  /** Чи була гонка мокрою — від цього залежить, чи діє правило двох сумішей. */
+  private everWet = false;
 
   constructor(setup: RaceSetup) {
     this.rng = new Rng(setup.seed);
-    this.playerId = setup.playerDriverId ?? null;
+    this.playerTeamId = setup.playerTeamId ?? null;
 
     for (const d of setup.drivers) this.drivers.set(d.id, d);
     for (const t of setup.teams) this.teams.set(t.id, t);
@@ -146,6 +149,7 @@ export class Race {
       energyMJ: BATTERY_MAX,
       overrideLeft: Math.max(2, Math.round((OVERRIDE_PER_RACE * laps) / this.track.laps)),
       overrideArmed: false,
+      manualOverride: false,
       paceMode: 3,
       energyMode: 'balance',
       stops: 0,
@@ -155,8 +159,33 @@ export class Race {
       bestLap: Infinity,
       stuckLaps: 0,
       dnfReason: null,
-      isPlayer: driverId === this.playerId,
+      penalty: 0,
+      penaltyReason: null,
+      isPlayer: driver.teamId === this.playerTeamId,
+      autoStrategy: true,
+      manualPace: false,
     };
+  }
+
+  /**
+   * Правило двох сумішей. Досі воно існувало лише в голові стратега ШІ —
+   * і це робило «взагалі не заїжджати в бокси» найкращою стратегією гонки.
+   * Тепер за нього платять, як у житті: штраф до підсумкового часу.
+   */
+  private applyRulePenalties(): void {
+    if (this.everWet) return; // у мокру гонку правило не діє
+
+    for (const car of this.state.cars) {
+      if (car.status === 'dnf') continue;
+      const dry = new Set(
+        car.compoundsUsed.filter((c) => c === 'soft' || c === 'medium' || c === 'hard'),
+      );
+      if (dry.size >= 2) continue;
+      car.penalty = TWO_COMPOUND_PENALTY;
+      car.penaltyReason = 'не виконано правило двох сумішей';
+      car.totalTime += TWO_COMPOUND_PENALTY;
+      this.log('radio', `${this.drivers.get(car.driverId)!.short}: +30 с — одна суміш за гонку`);
+    }
   }
 
   /** Стартова затримка: реакція на світлофор + місце на решітці. */
@@ -173,14 +202,49 @@ export class Race {
     this.resort();
   }
 
-  /** Наказ гравця на наступне коло. */
+  /**
+   * Наказ гравця. Діє з наступного прорахованого кола — рівно як на справжньому
+   * пітволі: сказав по радіо, пілот виконує на наступному колі.
+   */
   order(o: PitwallOrder): void {
     const car = this.state.cars.find((c) => c.driverId === o.driverId);
     if (!car || car.status === 'dnf') return;
-    if (o.paceMode !== undefined) car.paceMode = o.paceMode;
+    if (o.paceMode !== undefined) {
+      car.paceMode = o.paceMode;
+      car.manualPace = true;
+    }
+    if (o.autoPace) car.manualPace = false;
     if (o.energyMode !== undefined) car.energyMode = o.energyMode;
     if (o.pit !== undefined) car.pitRequest = o.pit;
-    if (o.override !== undefined) car.overrideArmed = o.override;
+    if (o.override !== undefined) {
+      car.overrideArmed = o.override;
+      car.manualOverride = true;
+    }
+    if (o.autoStrategy !== undefined) car.autoStrategy = o.autoStrategy;
+  }
+
+  /** Машини гравця — для панелі пітволу. */
+  playerCars(): CarState[] {
+    return this.state.cars.filter((c) => c.isPlayer);
+  }
+
+  driver(id: string): Driver | undefined {
+    return this.drivers.get(id);
+  }
+
+  team(id: string): Team | undefined {
+    return this.teams.get(id);
+  }
+
+  /** Що радить стратег для цієї машини — те саме, з чим бореться гравець. */
+  advice(driverId: string): { nextPitLap: number; stops: number; nextCompound: CompoundId | null } | null {
+    const brain = this.brains.get(driverId);
+    if (!brain) return null;
+    return {
+      nextPitLap: brain.nextPitLap,
+      stops: brain.plan.stops,
+      nextCompound: brain.plan.stints[brain.stintIndex + 1]?.compound ?? null,
+    };
   }
 
   /** Один крок = одне коло для всього пелотона. */
@@ -196,6 +260,7 @@ export class Race {
     // Погода змінюється до кола, щоб рішення про гуму мало сенс
     const before = s.weather;
     s.weather = this.weatherScript[s.lap] ?? 'dry';
+    if (s.weather !== 'dry') this.everWet = true;
     if (s.weather !== before) {
       this.log(
         'weather',
@@ -217,17 +282,38 @@ export class Race {
       gaps.set(car.driverId, i === 0 ? Infinity : car.totalTime - running[i - 1]!.totalTime);
     }
 
-    // 1. Рішення ШІ
+    // 1. Рішення ШІ.
+    //    Машини гравця теж проходять через стратега, але лише по піт-стопах
+    //    і тільки поки ввімкнена автостратегія. Темп, енергію та Override
+    //    для них задає гравець — це і є його важелі.
     const pitReasons = new Map<string, string>();
     for (const car of running) {
-      if (car.isPlayer) continue;
       const driver = this.drivers.get(car.driverId)!;
+      const team = this.teams.get(car.teamId)!;
       const brain = this.brains.get(car.driverId)!;
-      car.paceMode = decidePace(car, s, gaps.get(car.driverId) ?? Infinity, brain);
-      const decision = decidePit(car, brain, s, this.track, driver);
+      const gapAhead = gaps.get(car.driverId) ?? Infinity;
+
+      // Темп веде контролер, поки гравець не взяв його на себе — так пасивна
+      // гра дає рівно те саме, що й машина під ШІ, а не гіршу
+      if (!car.isPlayer || !car.manualPace) {
+        car.paceMode = decidePace(car, s, gapAhead, brain);
+      }
+      // Override теж автоматичний, поки гравець не взяв його на себе:
+      // інакше пасивна гра означала б добровільну відмову від важеля
+      if (!car.isPlayer || !car.manualOverride) {
+        car.overrideArmed = gapAhead <= OVERRIDE_WINDOW;
+      }
+
+      // Наказ гравця має пріоритет над будь-яким планом
+      if (car.pitRequest) {
+        pitReasons.set(car.driverId, 'наказ');
+        continue;
+      }
+      if (car.isPlayer && !car.autoStrategy) continue;
+
+      const decision = decidePit(car, brain, s, this.track, driver, team.strategy, this.rng);
       car.pitRequest = decision?.compound ?? null;
       if (decision) pitReasons.set(car.driverId, decision.reason);
-      car.overrideArmed = (gaps.get(car.driverId) ?? Infinity) <= OVERRIDE_WINDOW;
     }
 
     // 2. Чисті часи кола
@@ -258,7 +344,7 @@ export class Race {
       let time = result.time;
 
       // Дрібні помилки
-      const mistake = checkMistake(car, driver, gapAhead < 0.8, this.rng);
+      const mistake = checkMistake(car, driver, gapAhead < 0.8, this.rng, this.track.compression ?? 1);
       if (mistake) {
         time += mistake.cost;
         this.log('flat-spot', `${driver.short}: ${mistake.text}`, car.driverId);
@@ -268,7 +354,9 @@ export class Race {
       if (car.pitRequest) {
         const stationary = pitStopTime(team, this.rng);
         // Під сейфті-каром піт коштує вдвічі дешевше — це і є те саме вікно
-        const lossMult = s.flag === 'safety-car' ? 0.5 : s.flag === 'vsc' ? 0.65 : 1;
+        // Під сейфті-каром пелотон повзе, тож проїзд піт-лейну коштує помітно
+        // менше часу відносно суперників — саме тому вікно й цінне
+        const lossMult = s.flag === 'safety-car' ? 0.35 : s.flag === 'vsc' ? 0.6 : 1;
         time += this.track.pitLoss * lossMult + stationary;
 
         const compound = car.pitRequest;
@@ -325,7 +413,7 @@ export class Race {
     for (const car of running) {
       const team = this.teams.get(car.teamId)!;
       const driver = this.drivers.get(car.driverId)!;
-      const reason = checkDnf(car, team, driver, this.rng);
+      const reason = checkDnf(car, team, driver, this.rng, this.track.compression ?? 1);
       if (reason) {
         car.status = 'dnf';
         car.dnfReason = reason;
@@ -352,6 +440,8 @@ export class Race {
     // 8. Фініш
     if (s.lap >= s.totalLaps) {
       for (const car of s.cars) if (car.status === 'running') car.status = 'finished';
+      this.applyRulePenalties();
+      this.resort();
       s.finished = true;
     }
   }
@@ -433,14 +523,18 @@ export class Race {
   private deploySafetyCar(laps: number): void {
     this.state.flag = 'safety-car';
     this.state.flagLapsLeft = laps;
-    // Пелотон збирається — відриви стискаються, це і є драма сейфті-кара
+    // Пелотон збирається — це і є драма сейфті-кара.
+    // Інтервал 1.8 с, а не 0.9: у справжній Ф1 двадцять машин за сейфті-каром
+    // розтягнуті приблизно на 40 секунд траси. З надто щільним пелотоном
+    // піт-стоп під SC відкидав на півтора десятка позицій — і головне рішення
+    // гонки перетворювалось на самогубство замість вигоди.
     const running = this.state.cars
       .filter((c) => c.status === 'running')
       .sort((a, b) => a.totalTime - b.totalTime);
     const leader = running[0];
     if (leader) {
       running.forEach((car, i) => {
-        car.totalTime = leader.totalTime + i * 0.9;
+        car.totalTime = leader.totalTime + i * 1.8;
       });
     }
     this.log('safety-car', 'СЕЙФТІ-КАР НА ТРАСІ — вікно для піту відкрите!');
@@ -487,6 +581,8 @@ export class Race {
         bestLap: car.bestLap === Infinity ? null : car.bestLap,
         compounds: car.compoundsUsed,
         dnfReason: car.dnfReason,
+        penalty: car.penalty,
+        penaltyReason: car.penaltyReason,
         points:
           car.status === 'dnf' ? 0 : (POINTS[i] ?? 0) + (fl && i < 10 ? 1 : 0),
         fastestLap: fl,
@@ -506,6 +602,8 @@ export interface ClassifiedCar {
   bestLap: number | null;
   compounds: CompoundId[];
   dnfReason: string | null;
+  penalty: number;
+  penaltyReason: string | null;
   points: number;
   fastestLap: boolean;
 }

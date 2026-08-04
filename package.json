@@ -11,9 +11,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "race": "node scripts/race.ts",
-    "balance": "node scripts/balance.ts"
+    "balance": "node scripts/balance.ts",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "verify": "tsc --noEmit && vitest run && playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/node": "^26.1.2",
     "typescript": "^5.7.3",
     "vite": "^6.0.11",
