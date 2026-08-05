@@ -5,6 +5,7 @@
 import {
   BATTERY_MAX,
   COMPOUNDS,
+  DRY_COMPOUNDS,
   FUEL_MARGIN_KG,
   MIN_GAP,
   OVERRIDE_PER_RACE,
@@ -31,6 +32,7 @@ import {
   decidePace,
   decidePit,
   planForDriver,
+  planWithStops,
   type AiBrain,
 } from './strategyAI.ts';
 import { ageTyre, freshTyre } from './tyres.ts';
@@ -179,6 +181,7 @@ export class Race {
       penalty: 0,
       penaltyReason: null,
       penalties: 0,
+      wrongTyreLaps: 0,
       isPlayer: driver.teamId === this.playerTeamId,
       autoStrategy: true,
       manualPace: false,
@@ -277,6 +280,40 @@ export class Race {
     return forecast(this.weatherScript, this.state.lap, horizon, rng);
   }
 
+  /**
+   * Розбір стратегії після гонки: що машина зробила і що було б оптимально.
+   * Рахується тим самим планувальником, із яким гравець боровся всю гонку, —
+   * тож «одностоп був би на 4 с швидший» не думка, а та сама математика.
+   */
+  debrief(driverId: string): {
+    stops: number;
+    wrongTyreLaps: number;
+    plans: { stops: number; cost: number }[];
+    bestStops: number;
+    /** Наскільки обрана кількість зупинок дорожча за оптимум, с. 0 — оптимум. */
+    lostToBest: number;
+  } | null {
+    const car = this.state.cars.find((c) => c.driverId === driverId);
+    const driver = this.drivers.get(driverId);
+    if (!car || !driver) return null;
+
+    const plans = [1, 2, 3].map((stops) => ({
+      stops,
+      cost: planWithStops(this.track, this.totalLaps, driver, this.track.pitLoss, stops).cost,
+    }));
+    const best = plans.reduce((a, b) => (b.cost < a.cost ? b : a));
+    const chosen = plans.find((p) => p.stops === car.stops);
+
+    return {
+      stops: car.stops,
+      wrongTyreLaps: car.wrongTyreLaps,
+      plans,
+      bestStops: best.stops,
+      // Нуль зупинок або більше трьох — поза таблицею; там втрату чесно не порахувати
+      lostToBest: chosen ? chosen.cost - best.cost : Number.NaN,
+    };
+  }
+
   /** Що радить стратег для цієї машини — те саме, з чим бореться гравець. */
   advice(driverId: string): { nextPitLap: number; stops: number; nextCompound: CompoundId | null } | null {
     const brain = this.brains.get(driverId);
@@ -364,6 +401,12 @@ export class Race {
       const driver = this.drivers.get(car.driverId)!;
       const team = this.teams.get(car.teamId)!;
       const gapAhead = gaps.get(car.driverId) ?? Infinity;
+
+      // Для розбору після гонки: кожне коло на гумі не під погоду — втрата
+      const onSlicks = DRY_COMPOUNDS.includes(car.tyre.compound);
+      if ((s.weather !== 'dry' && onSlicks) || (s.weather === 'dry' && !onSlicks)) {
+        car.wrongTyreLaps += 1;
+      }
 
       const result = computeLap(car, {
         track: this.track,

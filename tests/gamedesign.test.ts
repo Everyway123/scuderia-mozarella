@@ -234,6 +234,59 @@ describe('G1c: перевага не абсурдна', () => {
   });
 });
 
+describe('розбір стратегії після гонки', () => {
+  it('debrief узгоджений із гонкою і чесний щодо оптимуму', () => {
+    const race = runRace({ trackId: 'bahrain', seed: 11, playerTeamId: 'haas' });
+    for (const car of race.playerCars()) {
+      const d = race.debrief(car.driverId)!;
+      expect(d).not.toBeNull();
+      // Факти збігаються з класифікацією
+      const cls = race.classification().find((c) => c.driver.id === car.driverId)!;
+      expect(d.stops).toBe(cls.stops);
+      // Плани відсортовані за сенсом: bestStops має найменшу вартість
+      const best = d.plans.find((p) => p.stops === d.bestStops)!;
+      for (const p of d.plans) expect(best.cost).toBeLessThanOrEqual(p.cost);
+      // Втрата проти оптимуму невід'ємна, коли її взагалі можна порахувати
+      if (Number.isFinite(d.lostToBest)) expect(d.lostToBest).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('суха гонка — нуль кіл на неправильній гумі, впертість під дощем — багато', () => {
+    // Бахрейн: rainChance 2% — на цьому seed сухо
+    const dry = runRace({ trackId: 'bahrain', seed: 11, playerTeamId: 'haas' });
+    expect(dry.state.events.some((e) => e.kind === 'weather')).toBe(false);
+    for (const car of dry.playerCars()) {
+      expect(dry.debrief(car.driverId)!.wrongTyreLaps).toBe(0);
+    }
+
+    // Мокра гонка з упертим гравцем: лічильник мусить це показати
+    for (const seed of SEEDS) {
+      const wet = runRace({
+        trackId: 'spa',
+        seed,
+        playerTeamId: 'haas',
+        policy: (race) => {
+          if (race.state.weather === 'dry') return;
+          for (const car of race.playerCars()) {
+            if (car.status !== 'running') continue;
+            car.autoStrategy = false;
+            if (car.pitRequest === 'inter' || car.pitRequest === 'wet') car.pitRequest = null;
+          }
+        },
+      });
+      if (!wet.state.events.some((e) => e.kind === 'weather')) continue;
+      const laps = wet
+        .playerCars()
+        .filter((c) => c.status !== 'dnf')
+        .map((c) => wet.debrief(c.driverId)!.wrongTyreLaps);
+      if (laps.length === 0) continue;
+      expect(Math.max(...laps)).toBeGreaterThan(0);
+      return; // одна мокра гонка з доказом — достатньо
+    }
+    throw new Error('серед seed не знайшлось мокрої гонки на Спа');
+  });
+});
+
 describe('G4: вікенд за один сеанс', () => {
   it('гонка на 25% дистанції триває 3–5 хвилин на 1×', () => {
     const TARGET_25 = 210;

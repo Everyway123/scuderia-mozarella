@@ -531,6 +531,36 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
     })
     .join('');
 
+  // Розбір стратегії: гонка стає уроком, а не лише результатом. Це та сама
+  // математика планувальника, з якою гравець боровся, — тож цифрам можна вірити.
+  let debrief = '';
+  const myCars = race.playerCars();
+  if (myCars.length > 0) {
+    const lines = myCars
+      .map((car) => {
+        const d = race.debrief(car.driverId);
+        const drv = race.driver(car.driverId);
+        if (!d || !drv) return '';
+        if (car.status === 'dnf') return `<li><b>${esc(drv.short)}</b> — схід, розбирати нічого.</li>`;
+
+        const wasBest = d.stops === d.bestStops && Number.isFinite(d.lostToBest);
+        const strat = wasBest
+          ? `${d.stops}-стоп — оптимальний вибір`
+          : Number.isFinite(d.lostToBest)
+            ? `${d.stops}-стоп; ${d.bestStops}-стоп був би на ~${d.lostToBest.toFixed(1)} с швидший`
+            : `${d.stops} зупинок — поза розрахунковою сіткою стратега`;
+        const wet =
+          d.wrongTyreLaps > 0
+            ? ` Невідповідна погоді гума: <b>${d.wrongTyreLaps} кіл</b> — тут ховались секунди.`
+            : '';
+        return `<li><b>${esc(drv.short)}</b>: ${strat}.${wet}</li>`;
+      })
+      .join('');
+    debrief = `<div class="debrief" data-test="debrief">
+      <b>📋 Розбір стратегії</b><ul>${lines}</ul>
+    </div>`;
+  }
+
   const panel = document.createElement('div');
   panel.className = 'results-overlay';
   panel.dataset.test = 'results';
@@ -538,6 +568,7 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
     <div class="results">
       <h2>🏁 ${esc(race.track.name)}</h2>
       ${summary}
+      ${debrief}
       <table>
         <thead><tr><th></th><th>Пілот</th><th></th><th>±</th><th>Гап</th><th>Піт</th><th>Суміші</th><th>Очки</th></tr></thead>
         <tbody>${rows}</tbody>

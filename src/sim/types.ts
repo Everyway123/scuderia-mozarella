@@ -139,6 +139,8 @@ export interface CarState {
   penaltyReason: string | null;
   /** Скільки разів отримував увагу стюардів — для радіо й розбору. */
   penalties: number;
+  /** Кіл на гумі, що не відповідає погоді — для післягоночного розбору. */
+  wrongTyreLaps: number;
   isPlayer: boolean;
   /**
    * Чи планує піт-стопи ШІ. Для машин гравця темп, енергія й Override завжди його,

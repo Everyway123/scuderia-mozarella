@@ -28,6 +28,10 @@ test('E1: меню → сезон → гонка → класифікація', 
   await expect(rows).toHaveCount(22);
   await expect(page.locator('[data-test="results-summary"]')).toBeVisible();
 
+  // Розбір стратегії: по рядку на кожну машину гравця
+  await expect(page.locator('[data-test="debrief"]')).toBeVisible();
+  await expect(page.locator('[data-test="debrief"] li')).toHaveCount(2);
+
   expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
 });
 

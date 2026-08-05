@@ -38,6 +38,7 @@ function car(overrides: Partial<CarState> = {}): CarState {
     penalty: 0,
     penaltyReason: null,
     penalties: 0,
+    wrongTyreLaps: 0,
     isPlayer: false,
     autoStrategy: true,
     manualPace: false,
