@@ -93,6 +93,48 @@ test('E3b: гра зупиняється 5–9 разів за гонку (кр�
   expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
 });
 
+test('E11: радар погоди попереджає ДО дощу, і превентивний заїзд працює', async ({ page }) => {
+  const errors = await openApp(page);
+
+  // Seed із дощем — прогнозний запит мусить прийти ще на сухій трасі
+  const wetSeeds = seedsWithEvent('spa', 'weather', 6, 2);
+  expect(wetSeeds.length, 'жоден seed не дає дощу на Спа').toBeGreaterThan(0);
+
+  let got = false;
+  for (const seed of wetSeeds) {
+    await quickRace(page, 'spa', seed);
+
+    // Радар видно на пітволі з першої секунди — 6 клітинок прогнозу
+    await expect(page.locator('[data-test="forecast"]')).toBeVisible();
+    await expect(page.locator('[data-test="forecast"] .fc-cell')).toHaveCount(6);
+
+    await page.click('#speedBtn');
+    await page.click('#speedBtn');
+    got = await waitForPrompt(page, 'forecast', 45);
+    if (got) break;
+    await page.goto('/');
+    await expect(page.locator('[data-test="menu"]')).toBeVisible();
+  }
+  expect(got, 'прогнозний запит так і не зʼявився').toBe(true);
+
+  // Головне: запит прийшов, коли траса ще СУХА — це і є гра на випередження
+  const atPrompt = await raceState(page);
+  expect(atPrompt!.weather).toBe('dry');
+
+  // «Обидві на інтер»
+  await page.locator('.prompt.on button').first().click();
+  const armed = await raceState(page);
+  for (const p of armed!.players) {
+    if (p.status === 'dnf') continue;
+    expect(
+      p.pitRequest === 'inter' || p.compound === 'inter',
+      `${p.driverId}: наказ на інтер не поставлено`,
+    ).toBe(true);
+  }
+
+  expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
+});
+
 test('E8: рішення про дощ доходить до машин і міняє гонку', async ({ page }) => {
   const errors = await openApp(page);
 

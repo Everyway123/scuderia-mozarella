@@ -19,6 +19,7 @@ import {
   checkMistake,
   checkSafetyCar,
   checkStewards,
+  forecast,
   pitStopTime,
   planWeather,
 } from './incidents.ts';
@@ -91,6 +92,7 @@ export class Race {
   private readonly teams = new Map<string, Team>();
   private readonly brains = new Map<string, AiBrain>();
   private readonly rng: Rng;
+  private readonly seed: number;
   private readonly playerTeamId: string | null;
   /** Погода розписана наперед — гравець бачить її лише через прогноз. */
   private readonly weatherScript: WeatherState[];
@@ -101,6 +103,7 @@ export class Race {
 
   constructor(setup: RaceSetup) {
     this.rng = new Rng(setup.seed);
+    this.seed = setup.seed;
     this.playerTeamId = setup.playerTeamId ?? null;
 
     for (const d of setup.drivers) this.drivers.set(d.id, d);
@@ -258,6 +261,20 @@ export class Race {
   delayPit(driverId: string, laps: number): void {
     const brain = this.brains.get(driverId);
     if (brain && Number.isFinite(brain.nextPitLap)) brain.nextPitLap += laps;
+  }
+
+  /**
+   * Прогноз погоди, який бачить гравець: правда з weatherScript, розмита тим
+   * сильніше, чим далі коло. Це і є інформаційна перевага гравця — ШІ прогноз
+   * не читає, він реагує лише на краплі на візорі (wrongTyre у decidePit).
+   *
+   * RNG навмисно окремий і детермінований від (seed, коло): повторний виклик
+   * на тому ж колі дає той самий прогноз, а головний потік симуляції не
+   * зсувається ні на один тік — на зсувах уже чотири рази ламались E2E-seed'и.
+   */
+  weatherForecast(horizon = 6): { lap: number; chance: number }[] {
+    const rng = new Rng((this.seed ^ (this.state.lap * 2654435761)) >>> 0);
+    return forecast(this.weatherScript, this.state.lap, horizon, rng);
   }
 
   /** Що радить стратег для цієї машини — те саме, з чим бореться гравець. */

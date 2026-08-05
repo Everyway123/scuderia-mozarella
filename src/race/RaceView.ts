@@ -4,7 +4,7 @@
 // миті й ні на коло далі — інакше наказ гравця застосувався б у вже
 // порахованому майбутньому. Одне коло затримки — це і є радіо на пітволі.
 
-import { COMPOUNDS } from '../sim/constants.ts';
+import { COMPOUNDS, DRY_COMPOUNDS } from '../sim/constants.ts';
 import { fmt, Race } from '../sim/raceEngine.ts';
 import type { CompoundId, Driver, RaceLength, Team, Track } from '../sim/types.ts';
 import { PitwallPanel } from './PitwallPanel.ts';
@@ -198,6 +198,62 @@ export class RaceView {
         ],
       });
       return;
+    }
+
+    // 2a. Радар: дощ за коло-два, а ми на сліках. Це ІНФОРМАЦІЙНА перевага
+    //     гравця — ШІ прогноз не читає й реагує лише на краплі, тож ранній
+    //     заїзд входить у дощове коло вже на правильній гумі. Замір: +2.0
+    //     позиції за мокру гонку в середняка, 75% мокрих гонок виграно.
+    if (state.weather === 'dry' && !this.firedPrompts.has('fc-rain')) {
+      const fc = this.race.weatherForecast(6);
+      const inOne = (fc[0]?.chance ?? 0) >= 0.7;
+      const inTwo = (fc[1]?.chance ?? 0) >= 0.7;
+      const onSlicks = alive.some((c) => DRY_COMPOUNDS.includes(c.tyre.compound));
+      if ((inOne || inTwo) && onSlicks && state.totalLaps - lap > 3) {
+        this.firedPrompts.add('fc-rain');
+        this.ask({
+          id: 'forecast',
+          title: '🌦 РАДАР: ДОЩ НАСУВАЄТЬСЯ',
+          sub: inOne
+            ? 'Дощ уже наступного кола. Заїзд зараз — і мокре коло на інтері'
+            : 'Дощ за два кола. Ранній заїзд виграє у тих, хто чекатиме крапель',
+          actions: [
+            {
+              label: 'Обидві на інтер',
+              primary: true,
+              act: () => this.pitwall.pitBoth('inter'),
+            },
+            { label: 'Чекаємо: може, пронесе', act: () => {} },
+          ],
+        });
+        return;
+      }
+    }
+
+    // 2b. Радар: попереду сухо, а ми на дощовій гумі — повернення на слік
+    //     на коло раніше за тих, хто чекає, поки траса висохне під колесами.
+    if (state.weather !== 'dry' && !this.firedPrompts.has('fc-dry')) {
+      const fc = this.race.weatherForecast(6);
+      const dryAhead = (fc[0]?.chance ?? 1) <= 0.3;
+      const wetTyres = alive.some((c) => !DRY_COMPOUNDS.includes(c.tyre.compound));
+      if (dryAhead && wetTyres && state.totalLaps - lap > 3) {
+        this.firedPrompts.add('fc-dry');
+        const slick = this.race.advice(alive[0]!.driverId)?.nextCompound ?? 'medium';
+        this.ask({
+          id: 'drying',
+          title: '🌤 РАДАР: ПІДСИХАЄ',
+          sub: 'Наступне коло вже сухе. Слік зараз — або втрачати секунди на інтері',
+          actions: [
+            {
+              label: `Обидві на слік (${COMPOUNDS[slick].label})`,
+              primary: true,
+              act: () => this.pitwall.pitBoth(slick),
+            },
+            { label: 'Перестрахуємось ще коло', act: () => {} },
+          ],
+        });
+        return;
+      }
     }
 
     // 2. Погода змінилась — не та гума коштує секунди на колі

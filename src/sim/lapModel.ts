@@ -139,12 +139,18 @@ function wetPenalty(weather: WeatherState, _driver: Driver, car: CarState): numb
     return 0;
   }
   const base = WET_PENALTY[weather] ?? 0;
-  const right =
-    weather === 'rain'
-      ? car.tyre.compound === 'wet'
-      : car.tyre.compound === 'inter' || car.tyre.compound === 'wet';
-  // Суха гума в дощ — це не «повільніше», це «нікуди не їде»
-  return right ? base * 0.15 : base;
+  // Частка штрафу за гуму: 0.15 — правильна, 1.0 — слік, який нікуди не їде.
+  // Інтер у зливу — проміжний: гірший за дощову, але це не катастрофа.
+  // Разом із offset суміші кросовер сходиться в правильному порядку:
+  //   легкий дощ:  інтер 4.3 < слік 6.0 < дощова 7.4   (с/коло)
+  //   злива:       дощова 8.5 < інтер 9.3 < слік 13.0
+  let factor: number;
+  if (weather === 'rain') {
+    factor = car.tyre.compound === 'wet' ? 0.15 : car.tyre.compound === 'inter' ? 0.45 : 1;
+  } else {
+    factor = car.tyre.compound === 'inter' || car.tyre.compound === 'wet' ? 0.15 : 1;
+  }
+  return base * factor;
 }
 
 /**

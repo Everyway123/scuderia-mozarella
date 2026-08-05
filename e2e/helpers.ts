@@ -116,7 +116,7 @@ export async function dismissPromptIfAny(page: Page): Promise<boolean> {
  */
 export async function waitForPrompt(
   page: Page,
-  kind: 'sc' | 'rain' | 'cliff' | 'override',
+  kind: 'sc' | 'rain' | 'cliff' | 'override' | 'forecast' | 'drying',
   maxSeconds = 60,
 ): Promise<boolean> {
   const deadline = Date.now() + maxSeconds * 1000;

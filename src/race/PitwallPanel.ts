@@ -36,6 +36,8 @@ export class PitwallPanel {
   private readonly cards = new Map<string, CardRefs>();
   private readonly host: HTMLElement;
   private readonly race: Race;
+  private forecastCells: HTMLElement | null = null;
+  private forecastLap = -1;
 
   constructor(host: HTMLElement, race: Race) {
     this.host = host;
@@ -52,7 +54,11 @@ export class PitwallPanel {
 
     const team = this.race.team(cars[0]!.teamId);
     this.host.innerHTML = `<div class="pw-head" style="--team:${team?.color ?? '#888'}">
-      <b>ПІТВОЛ</b><span>${team?.name ?? ''}</span></div>`;
+      <b>ПІТВОЛ</b><span>${team?.name ?? ''}</span></div>
+      <div class="pw-forecast" data-test="forecast" title="Прогноз: шанс дощу на наступні кола">
+        <span class="pw-lbl">РАДАР</span><div class="fc-cells"></div>
+      </div>`;
+    this.forecastCells = this.host.querySelector('.fc-cells');
 
     for (const car of cars) {
       const driver = this.race.driver(car.driverId)!;
@@ -173,6 +179,27 @@ export class PitwallPanel {
     }
   }
 
+  /**
+   * Радар погоди: шанс дощу на наступні кола. Це інформаційна перевага
+   * гравця — ШІ прогноз не читає. Перемальовуємо лише коли коло змінилось:
+   * прогноз детермінований від (seed, коло), тож частіше немає сенсу.
+   */
+  private renderForecast(): void {
+    if (!this.forecastCells) return;
+    const lap = this.race.state.lap;
+    if (lap === this.forecastLap) return;
+    this.forecastLap = lap;
+
+    const fc = this.race.weatherForecast(6);
+    this.forecastCells.innerHTML = fc
+      .map((f) => {
+        const level = f.chance >= 0.7 ? 'wet' : f.chance >= 0.4 ? 'maybe' : 'dry';
+        const icon = level === 'wet' ? '🌧' : level === 'maybe' ? '🌥' : '☀';
+        return `<span class="fc-cell ${level}" title="коло ${f.lap}: дощ ${Math.round(f.chance * 100)}%">${icon}</span>`;
+      })
+      .join('');
+  }
+
   /** Наказати обом машинам заїхати — використовується у вікні сейфті-кара. */
   pitBoth(compound: CompoundId): void {
     for (const car of this.race.playerCars()) {
@@ -193,6 +220,7 @@ export class PitwallPanel {
   }
 
   render(frame: RaceFrame): void {
+    this.renderForecast();
     for (const [driverId, refs] of this.cards) {
       const car = this.race.playerCars().find((c) => c.driverId === driverId);
       const sample = frame.cars.find((c) => c.driverId === driverId);

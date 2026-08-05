@@ -60,6 +60,93 @@ describe('G1: гравець не покараний за бездіяльніс
   });
 });
 
+describe('G1: компетентний гравець стабільно обіграє ШІ', () => {
+  it('гра на радарі погоди виграє мокрі гонки у штатного стратега', () => {
+    // Політика «синоптик» користується лише тим, що бачить гравець на екрані:
+    // радаром weatherForecast() і кнопками пітволу. Заїзд на інтер — на
+    // останньому сухому колі (дощове коло вже на правильній гумі), назад на
+    // слік — щойно радар показує суху трасу. ШІ прогноз принципово не читає:
+    // він реагує на краплі з ваганням, пропорційним слабкості команди.
+    //
+    // Це той самий шлях, що й у грі: prompt'и 'forecast'/'drying' у RaceView
+    // пропонують рівно ці рішення.
+    const DRY = ['soft', 'medium', 'hard'];
+    const forecaster = (race: Race) => {
+      const s = race.state;
+      const fc = race.weatherForecast(6);
+      const rainSoon = (fc[0]?.chance ?? 0) >= 0.7 || (fc[1]?.chance ?? 0) >= 0.7;
+      const dryNext = (fc[0]?.chance ?? 1) <= 0.3;
+
+      for (const car of race.playerCars()) {
+        if (car.status !== 'running' || car.pitRequest) continue;
+        if (s.totalLaps - car.lap <= 1) continue;
+        const dryTyre = DRY.includes(car.tyre.compound);
+        const slick = () => race.advice(car.driverId)?.nextCompound ?? 'medium';
+
+        if (s.weather === 'dry' && rainSoon && dryTyre) {
+          race.order({ driverId: car.driverId, pit: 'inter' });
+        } else if (s.weather === 'rain' && dryTyre) {
+          race.order({ driverId: car.driverId, pit: 'wet' });
+        } else if (s.weather === 'light-rain' && dryTyre) {
+          race.order({ driverId: car.driverId, pit: 'inter' });
+        } else if (s.weather !== 'dry' && dryNext && !dryTyre) {
+          race.order({ driverId: car.driverId, pit: slick() });
+        } else if (s.weather === 'dry' && !dryTyre && !rainSoon) {
+          // !rainSoon критично: без нього щойно поставлений «превентивний»
+          // інтер негайно міняється назад на слік — подвійний піт на рівному місці
+          race.order({ driverId: car.driverId, pit: slick() });
+        }
+      }
+    };
+
+    // Дощові траси календаря — там, де рішення взагалі виникає
+    const rainy = TRACKS_2026.filter((t) => t.rainChance >= 0.3);
+    const seeds = Array.from({ length: 14 }, (_, i) => i * 11 + 2);
+
+    let total = 0;
+    let n = 0;
+    let wetSum = 0;
+    let wetN = 0;
+    let wetWins = 0;
+    let wetLosses = 0;
+
+    for (const teamId of ['haas', 'cadillac']) {
+      for (const track of rainy) {
+        for (const seed of seeds) {
+          const passive = runRace({ trackId: track.id, seed, playerTeamId: teamId });
+          const smart = runRace({
+            trackId: track.id,
+            seed,
+            playerTeamId: teamId,
+            policy: forecaster,
+          });
+          const d = teamScore(passive, teamId) - teamScore(smart, teamId);
+          total += d;
+          n++;
+          if (passive.state.events.some((e) => e.kind === 'weather')) {
+            wetSum += d;
+            wetN++;
+            if (d > 0) wetWins++;
+            if (d < 0) wetLosses++;
+          }
+        }
+      }
+    }
+
+    // Вибірка мусить бути осмисленою
+    expect(wetN).toBeGreaterThan(60);
+    // Головний критерій G1: у мокрих гонках синоптик СТАБІЛЬНО попереду —
+    // і в середньому (замір дав ~+2.3 позиції), і за частотою перемог
+    expect(wetSum / wetN, 'середня перевага в мокрих гонках').toBeGreaterThanOrEqual(0.8);
+    expect(
+      wetWins / Math.max(1, wetWins + wetLosses),
+      'частка виграних мокрих дуелей зі штатним стратегом',
+    ).toBeGreaterThanOrEqual(0.6);
+    // І поза дощем ця манера гри нічого не руйнує
+    expect(total / n, 'загальний баланс по дощових трасах').toBeGreaterThanOrEqual(0);
+  }, 300_000);
+});
+
 describe('G1b: рішення гравця справді змінюють гонку', () => {
   it('втручання в стратегію дає інший результат, а не косметику', () => {
     let changed = 0;

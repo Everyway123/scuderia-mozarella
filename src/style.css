@@ -542,6 +542,43 @@ input {
   font-size: 12.5px;
 }
 
+/* Радар погоди: шанс дощу на наступні кола — інформація, якої немає в ШІ */
+.pw-forecast {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.fc-cells {
+  display: flex;
+  gap: 3px;
+}
+
+.fc-cell {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  border-radius: 4px;
+  background: #16181d;
+  border: 1px solid var(--line);
+  opacity: 0.55;
+}
+
+.fc-cell.maybe {
+  opacity: 0.85;
+  border-color: #6b6330;
+}
+
+.fc-cell.wet {
+  opacity: 1;
+  border-color: #2e6fd8;
+  background: #14233d;
+}
+
 .pw-card {
   padding: 11px 12px 13px;
   border-bottom: 1px solid var(--line);
