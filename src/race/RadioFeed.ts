@@ -5,6 +5,7 @@
 
 import type { Race } from '../sim/raceEngine.ts';
 import type { RaceEvent } from '../sim/types.ts';
+import { sound } from './sound.ts';
 
 const KIND_ICON: Record<string, string> = {
   overtake: '⚔',
@@ -34,6 +35,9 @@ export class RadioFeed {
   private readonly race: Race;
   private shown = 0;
   private banner: Banner | null = null;
+  /** Тротлінг звуку: останній програш загалом і по типу події. */
+  private lastSoundAt = 0;
+  private readonly lastKindAt = new Map<string, number>();
 
   constructor(host: HTMLElement, bannerHost: HTMLElement, race: Race) {
     this.host = host;
@@ -44,11 +48,18 @@ export class RadioFeed {
   /** Показати всі події до вказаного кола включно. */
   update(lap: number, now: number): void {
     const events = this.race.state.events;
+
+    // Скільки подій наздоганяємо цим кадром. Велика пачка — це перемотка
+    // («до фінішу», прискорення) — там звук перетворився б на кашу
+    let pending = 0;
+    for (let i = this.shown; i < events.length && events[i]!.lap <= lap; i++) pending++;
+    const silent = pending > 6;
+
     while (this.shown < events.length) {
       const e = events[this.shown]!;
       if (e.lap > lap) break;
       this.shown++;
-      this.push(e, now);
+      this.push(e, now, silent);
     }
 
     if (this.banner && now > this.banner.until) {
@@ -58,8 +69,39 @@ export class RadioFeed {
     }
   }
 
-  private push(e: RaceEvent, now: number): void {
+  /** Озвучити подію — з тротлінгом, щоб трансляція звучала, а не тріщала. */
+  private playFor(e: RaceEvent, mine: boolean): void {
+    const t = performance.now() / 1000;
+    if (t - this.lastSoundAt < 0.12) return;
+    if (t - (this.lastKindAt.get(e.kind) ?? -9) < 1.2) return;
+
+    let played = true;
+    switch (e.kind) {
+      case 'start': sound.startLights(); break;
+      case 'safety-car': sound.safetyCar(); break;
+      case 'safety-car-end': sound.green(); break;
+      case 'weather': sound.rain(); break;
+      case 'dnf': sound.dnf(); break;
+      case 'fastest-lap': sound.fastest(); break;
+      // Дрібніші події звучать лише коли стосуються НАШИХ машин —
+      // інакше 22 боліди перетворюють ефір на суцільний писк
+      case 'overtake': mine ? sound.overtake() : (played = false); break;
+      case 'pit': mine ? sound.pit() : (played = false); break;
+      case 'penalty': mine ? sound.penalty() : (played = false); break;
+      case 'radio':
+      case 'flat-spot': mine ? sound.radio() : (played = false); break;
+      default: played = false;
+    }
+    if (played) {
+      this.lastSoundAt = t;
+      this.lastKindAt.set(e.kind, t);
+    }
+  }
+
+  private push(e: RaceEvent, now: number, silent = false): void {
     const mine = e.driverId ? this.race.playerCars().some((c) => c.driverId === e.driverId) : false;
+
+    if (!silent) this.playFor(e, mine);
 
     const row = document.createElement('div');
     row.className = `rf-row${mine ? ' mine' : ''}`;

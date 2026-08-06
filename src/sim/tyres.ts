@@ -25,16 +25,17 @@ function managementFactor(driver: Driver): number {
   return 1 - 0.5 * (driver.tyreManagement - 0.8);
 }
 
-export function tyreDelta(tyre: TyreState, track: Track, driver: Driver): number {
+export function tyreDelta(tyre: TyreState, track: Track, driver: Driver, wearMult = 1): number {
   const spec = COMPOUNDS[tyre.compound];
   const c = track.compression ?? 1;
 
   // Стиснення гонки: одне коло «коштує» c справжніх.
   // Стала складова множиться на c, а лінійна по віку — на c², бо вік у колах
   // теж стиснувся. Без квадрата коротка гонка втрачає всю гумову драму.
+  // wearMult — характер боліда (Team.tyreWear): дбайливий до гуми чи ні.
   let loss =
     spec.offset * c +
-    spec.degPerLap * tyre.age * track.tyreWear * c * c * managementFactor(driver);
+    spec.degPerLap * tyre.age * track.tyreWear * c * c * managementFactor(driver) * wearMult;
 
   if (tyre.wear > spec.cliff) {
     const past = (tyre.wear - spec.cliff) / (1 - spec.cliff);
@@ -53,6 +54,7 @@ export function wearPerLap(
   driver: Driver,
   paceMode: PaceMode,
   weather: WeatherState,
+  wearMult = 1,
 ): number {
   const spec = COMPOUNDS[tyre.compound];
   // Ресурс витрачається пропорційно стисненню — щоб кліф наставав
@@ -65,7 +67,7 @@ export function wearPerLap(
   if (weather !== 'dry') weatherMult = isWetTyre ? 0.8 : 3.0;
   else if (isWetTyre) weatherMult = 2.4;
 
-  return base * track.tyreWear * PACE_WEAR[paceMode] * skill * weatherMult;
+  return base * track.tyreWear * PACE_WEAR[paceMode] * skill * weatherMult * wearMult;
 }
 
 export function ageTyre(
@@ -74,9 +76,10 @@ export function ageTyre(
   driver: Driver,
   paceMode: PaceMode,
   weather: WeatherState,
+  wearMult = 1,
 ): void {
   tyre.age += 1;
-  tyre.wear = Math.min(1, tyre.wear + wearPerLap(tyre, track, driver, paceMode, weather));
+  tyre.wear = Math.min(1, tyre.wear + wearPerLap(tyre, track, driver, paceMode, weather, wearMult));
 }
 
 /** Чи вже за кліфом — пілот по радіо просить бокси саме тут. */
@@ -96,9 +99,10 @@ export function lapsToCliff(
   driver: Driver,
   paceMode: PaceMode,
   weather: WeatherState,
+  wearMult = 1,
 ): number {
   const spec = COMPOUNDS[tyre.compound];
-  const rate = wearPerLap(tyre, track, driver, paceMode, weather);
+  const rate = wearPerLap(tyre, track, driver, paceMode, weather, wearMult);
   if (rate <= 0) return 99;
   return Math.max(0, Math.floor((spec.cliff - tyre.wear) / rate));
 }

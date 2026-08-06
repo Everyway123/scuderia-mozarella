@@ -35,11 +35,21 @@ const PLANNING_WEAR = 1.2;
  * Втрата часу за стінт: інтегруємо ту саму модель гуми, що й у гонці.
  * Без цього «оптимальна стратегія» була б вгадуванням.
  */
-function stintCost(compound: CompoundId, laps: number, track: Track, driver: Driver): number {
+function stintCost(
+  compound: CompoundId,
+  laps: number,
+  track: Track,
+  driver: Driver,
+  wearMult = 1,
+): number {
   const spec = COMPOUNDS[compound];
   const c = track.compression ?? 1;
   const rate =
-    (c / spec.lifeLaps) * track.tyreWear * PLANNING_WEAR * (1 - 0.25 * driver.tyreManagement);
+    (c / spec.lifeLaps) *
+    track.tyreWear *
+    PLANNING_WEAR *
+    (1 - 0.25 * driver.tyreManagement) *
+    wearMult;
 
   let total = 0;
   let wear = 0;
@@ -48,7 +58,7 @@ function stintCost(compound: CompoundId, laps: number, track: Track, driver: Dri
     // рахувався б за іншою фізикою, ніж та, за якою їде гонка
     let loss =
       spec.offset * c +
-      spec.degPerLap * age * track.tyreWear * c * c * managementFactor(driver);
+      spec.degPerLap * age * track.tyreWear * c * c * managementFactor(driver) * wearMult;
     if (wear > spec.cliff) {
       const past = (wear - spec.cliff) / (1 - spec.cliff);
       loss += spec.cliffLoss * past * past * c;
@@ -87,10 +97,11 @@ export function planStrategy(
   driver: Driver,
   pitLossTotal: number,
   maxStops = 3,
+  wearMult = 1,
 ): StrategyPlan {
   let best: StrategyPlan | null = null;
   for (let stops = 1; stops <= maxStops; stops++) {
-    const plan = planWithStops(track, laps, driver, pitLossTotal, stops);
+    const plan = planWithStops(track, laps, driver, pitLossTotal, stops, wearMult);
     if (!best || plan.cost < best.cost) best = plan;
   }
   return best!;
@@ -114,6 +125,7 @@ export function planWithStops(
   driver: Driver,
   pitLossTotal: number,
   stops: number,
+  wearMult = 1,
 ): StrategyPlan {
   const parts = stops + 1;
   const lengths = splitLaps(laps, parts);
@@ -124,7 +136,8 @@ export function planWithStops(
     if (new Set(combo).size < 2) continue;
 
     let cost = (pitLossTotal + positionCost(track)) * stops;
-    for (let i = 0; i < parts; i++) cost += stintCost(combo[i]!, lengths[i]!, track, driver);
+    for (let i = 0; i < parts; i++)
+      cost += stintCost(combo[i]!, lengths[i]!, track, driver, wearMult);
 
     if (!best || cost < best.cost) {
       best = { stops, cost, stints: combo.map((compound, i) => ({ compound, laps: lengths[i]! })) };
@@ -145,9 +158,10 @@ export function planForDriver(
   driver: Driver,
   pitLossTotal: number,
   rng: Rng,
+  wearMult = 1,
 ): StrategyPlan {
   const plans = [1, 2, 3]
-    .map((s) => planWithStops(track, laps, driver, pitLossTotal, s))
+    .map((s) => planWithStops(track, laps, driver, pitLossTotal, s, wearMult))
     .sort((a, b) => a.cost - b.cost);
 
   const best = plans[0]!;
@@ -231,6 +245,7 @@ export function decidePit(
   driver: Driver,
   quality = 1,
   rng?: Rng,
+  wearMult = 1,
 ): PitDecision | null {
   const lapsLeft = state.totalLaps - car.lap;
   if (lapsLeft <= 1) return null;
@@ -281,7 +296,7 @@ export function decidePit(
   // 5. Позаплановий заїзд: гума за кліфом і до плану ще далеко.
   //    Це вже провал стратегії, тому поріг високий — інакше ШІ панікує
   //    і робить зайву зупинку на рівному місці.
-  const toCliff = lapsToCliff(car.tyre, track, driver, car.paceMode, state.weather);
+  const toCliff = lapsToCliff(car.tyre, track, driver, car.paceMode, state.weather, wearMult);
   const planFar = brain.nextPitLap - car.lap > 4;
   if (pastCliff(car.tyre) && toCliff <= 0 && planFar && lapsLeft > 8) return pick('cliff');
 

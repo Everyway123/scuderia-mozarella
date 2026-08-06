@@ -18,6 +18,8 @@ export interface PartCard {
   pitCrew?: number;
   /** Дельта якості стратега, 0..1. */
   strategy?: number;
+  /** Множник зносу гуми. <1 — гума живе довше. */
+  tyreWear?: number;
 }
 
 /**
@@ -124,6 +126,39 @@ export const PARTS: PartCard[] = [
     pace: -0.02,
   },
 
+  // ---- Гума: окремий архетип боліда-«няні» під Лусаїл і Сахір ----
+  {
+    id: 'suspension',
+    name: 'Адаптивна підвіска',
+    note: 'гума живе на 12% довше',
+    cost: 8,
+    tyreWear: 0.88,
+  },
+  {
+    id: 'tyresense',
+    name: 'Датчики температури гуми',
+    note: 'гума живе на 7% довше і −0.01 с/коло',
+    cost: 5,
+    tyreWear: 0.93,
+    pace: -0.01,
+  },
+  {
+    id: 'geometry',
+    name: 'Агресивна геометрія',
+    note: '−0.05 с/коло, але гума горить на 15% швидше',
+    cost: 7,
+    pace: -0.05,
+    tyreWear: 1.15,
+  },
+  {
+    id: 'conservative',
+    name: 'Консервативні налаштування',
+    note: 'гума живе на 20% довше, але +0.02 с/коло',
+    cost: 6,
+    pace: 0.02,
+    tyreWear: 0.8,
+  },
+
   // ---- Ризиковані ----
   {
     id: 'gamble',
@@ -159,6 +194,7 @@ export function isPureUpgrade(p: PartCard): boolean {
     (p.pace ?? 0) <= 0 &&
     (p.reliability ?? 1) <= 1 &&
     (p.pitCrew ?? 0) <= 0 &&
-    (p.strategy ?? 0) >= 0
+    (p.strategy ?? 0) >= 0 &&
+    (p.tyreWear ?? 1) <= 1
   );
 }

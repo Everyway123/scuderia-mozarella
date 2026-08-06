@@ -66,7 +66,7 @@ export function computeLap(car: CarState, ctx: LapContext): LapResult {
 
   const base = track.baseLap;
   const fuel = FUEL_EFFECT * car.fuelKg;
-  const tyre = tyreDelta(car.tyre, track, driver);
+  const tyre = tyreDelta(car.tyre, track, driver, team.tyreWear ?? 1);
   const pace = PACE_TIME[car.paceMode];
   const carPace = -carAdvantage(team);
   const driverPace = -driverAdvantage(driver, weather);

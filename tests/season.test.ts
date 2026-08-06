@@ -22,6 +22,7 @@ import {
   type SeasonState,
 } from '../src/season/season.ts';
 import { Race, type ClassifiedCar } from '../src/sim/raceEngine.ts';
+import * as tyresApi from '../src/sim/tyres.ts';
 
 // У Node немає localStorage — підставляємо мінімальний, щоб перевірити збереження
 beforeAll(() => {
@@ -140,13 +141,14 @@ describe('картки розробки (Monopoly: колода машини)', 
         (part.reliability ?? 1) < 1,
         (part.pitCrew ?? 0) < 0,
         (part.strategy ?? 0) > 0,
+        (part.tyreWear ?? 1) < 1,
       ].filter(Boolean).length;
       expect(gains, `${part.id}: картка нічого не дає`).toBeGreaterThan(0);
       expect(part.cost, `${part.id}: безкоштовна картка`).toBeGreaterThan(0);
     }
-    // Принаймні половина колоди має явну ціну, інакше вибору немає
+    // Принаймні третина колоди має явну ціну, інакше вибору немає
     const withCost = PARTS.filter(
-      (p) => (p.reliability ?? 1) > 1 || (p.pace ?? 0) > 0,
+      (p) => (p.reliability ?? 1) > 1 || (p.pace ?? 0) > 0 || (p.tyreWear ?? 1) > 1,
     ).length;
     expect(withCost / PARTS.length).toBeGreaterThan(0.35);
   });
@@ -196,6 +198,48 @@ describe('картки розробки (Monopoly: колода машини)', 
     const part = PART_BY_ID.get('frontwing')!;
     expect(after.pace).toBeCloseTo(before.pace + part.pace!, 5);
     expect(after.reliability).toBeGreaterThan(before.reliability);
+  });
+
+  it('шинна картка справді береже гуму', () => {
+    const s = newSeason('haas', 25, 7);
+    s.parts.push('suspension'); // гума живе на 12% довше
+    const team = teamsForRound(s).find((t) => t.id === 'haas')!;
+    expect(team.tyreWear).toBeCloseTo(0.88, 5);
+
+    // І це доходить до фізики: знос за коло менший, кліф далі
+    const track = TRACK_BY_ID.get('lusail')!;
+    const driver = DRIVERS_2026.find((d) => d.id === 'ocon')!;
+    const tyre = { compound: 'soft' as const, age: 8, wear: 0.4 };
+    const plain = tyresApi.wearPerLap(tyre, track, driver, 3, 'dry');
+    const kind = tyresApi.wearPerLap(tyre, track, driver, 3, 'dry', 0.88);
+    expect(kind).toBeLessThan(plain);
+    expect(tyresApi.lapsToCliff(tyre, track, driver, 3, 'dry', 0.88)).toBeGreaterThanOrEqual(
+      tyresApi.lapsToCliff(tyre, track, driver, 3, 'dry'),
+    );
+  });
+
+  it('дбайливий до гуми болід реально їде довші стінти', () => {
+    // Той самий болід, та сама траса-людожер (Лусаїл), різниця лише в tyreWear
+    const stops = (tyreWear: number) => {
+      let total = 0;
+      for (const seed of [3, 9, 15, 21]) {
+        const teams = TEAMS_2026.map((t) => (t.id === 'haas' ? { ...t, tyreWear } : t));
+        const race = new Race({
+          track: TRACK_BY_ID.get('lusail')!,
+          drivers: DRIVERS_2026,
+          teams,
+          length: 100,
+          seed,
+        });
+        race.runToEnd();
+        for (const c of race.classification()) {
+          if (c.team.id === 'haas' && c.status !== 'dnf') total += c.stops;
+        }
+      }
+      return total;
+    };
+    // Знос ×0.7 має прибирати зупинки принаймні інколи — і точно не додавати
+    expect(stops(0.7)).toBeLessThanOrEqual(stops(1));
   });
 
   it('швидша деталь робить болід швидшим у справжній гонці', () => {

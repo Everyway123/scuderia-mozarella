@@ -9,6 +9,7 @@ import { fmt, Race } from '../sim/raceEngine.ts';
 import type { CompoundId, Driver, RaceLength, Team, Track } from '../sim/types.ts';
 import { PitwallPanel } from './PitwallPanel.ts';
 import { RadioFeed } from './RadioFeed.ts';
+import { sound } from './sound.ts';
 import { RaceReplay } from './replay.ts';
 import { TimingTower } from './TimingTower.ts';
 import { TrackMap } from './TrackMap.ts';
@@ -126,6 +127,12 @@ export class RaceView {
     this.playBtn.addEventListener('click', () => this.togglePlay());
     this.speedBtn.addEventListener('click', () => this.cycleSpeed());
     q('#skipBtn').addEventListener('click', () => this.skipToEnd());
+
+    const soundBtn = q<HTMLButtonElement>('#soundBtn');
+    soundBtn.textContent = sound.on ? '🔊' : '🔇';
+    soundBtn.addEventListener('click', () => {
+      soundBtn.textContent = sound.toggle() ? '🔊' : '🔇';
+    });
 
     this.onResize = this.onResize.bind(this);
     this.onKey = this.onKey.bind(this);
@@ -446,6 +453,7 @@ export class RaceView {
   }
 
   private ask(p: Prompt): void {
+    sound.prompt();
     this.prompt = p;
     this.promptLeft = PROMPT_SECONDS;
     this.promptCount++;
@@ -520,6 +528,7 @@ export class RaceView {
         this.done = true;
         this.playing = false;
         this.dismissPrompt();
+        sound.finish();
         this.playBtn.textContent = '▶';
         this.flagEl.textContent = '🏁 ФІНІШ';
         this.opts.onFinish(this.race);
@@ -581,6 +590,7 @@ const TEMPLATE = `
       <span class="chip mono" id="raceClock">0.000</span>
     </div>
     <div class="race-ctrl">
+      <button class="btn" id="soundBtn" data-test="sound" title="Звук трансляції">🔊</button>
       <button class="btn" id="playBtn">⏸</button>
       <button class="btn" id="speedBtn">1×</button>
       <button class="btn" id="skipBtn">⏭ до фінішу</button>

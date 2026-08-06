@@ -1108,6 +1108,29 @@ input {
   margin: 0 0 14px;
 }
 
+/* Фінал сезону */
+.finale-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+  margin: 18px 0;
+}
+
+.finale-h {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 0 0 8px;
+}
+
+.finale-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
 /* Розбір стратегії: гонка як урок */
 .debrief {
   background: var(--panel-2);

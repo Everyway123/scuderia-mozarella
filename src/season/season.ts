@@ -166,6 +166,7 @@ export function teamsForRound(state: SeasonState): Team[] {
     let reliability = team.reliability;
     let pitCrew = team.pitCrew;
     let strategy = team.strategy;
+    let tyreWear = team.tyreWear ?? 1;
 
     for (const id of state.parts) {
       const part = PART_BY_ID.get(id);
@@ -174,6 +175,7 @@ export function teamsForRound(state: SeasonState): Team[] {
       reliability *= part.reliability ?? 1;
       pitCrew += part.pitCrew ?? 0;
       strategy += part.strategy ?? 0;
+      tyreWear *= part.tyreWear ?? 1;
     }
 
     // Фірмова траса: тут команда вже вигравала й знає її напамʼять
@@ -185,6 +187,7 @@ export function teamsForRound(state: SeasonState): Team[] {
       reliability: Math.max(0.3, reliability),
       pitCrew: Math.max(1.9, pitCrew),
       strategy: Math.min(0.98, strategy),
+      tyreWear: Math.max(0.55, Math.min(1.6, tyreWear)),
     };
   });
 }

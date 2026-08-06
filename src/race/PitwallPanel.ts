@@ -244,6 +244,7 @@ export class PitwallPanel {
         driver,
         car.paceMode,
         frame.weather,
+        this.race.team(car.teamId)?.tyreWear ?? 1,
       );
       refs.cliff.textContent = sample.tyreWear > spec.cliff ? 'КЛІФ!' : `${toCliff} кіл`;
       refs.cliff.classList.toggle('bad', sample.tyreWear > spec.cliff);

@@ -338,15 +338,66 @@ function showHub(): void {
 function showSeasonEnd(): void {
   const s = season!;
   const tStand = teamStandings(s);
+  const dStand = driverStandings(s);
   const pos = tStand.findIndex((r) => r.id === s.teamId) + 1;
+  const champion = dStand[0]!;
+  const myBest = Math.min(...s.history.map((r) => r.bestPosition || 99));
+  const totalPoints = s.history.reduce((a, r) => a + r.pointsScored, 0);
+  const totalRp = s.history.reduce((a, r) => a + r.rpGained, 0);
+  const betsWon = s.history.filter((r) => r.betPaid).length;
+  const homes = s.homeTracks
+    .map((id) => TRACK_BY_ID.get(id)?.name ?? id)
+    .join(', ');
+
+  const row = (r: { name: string; color: string; points: number; isPlayer: boolean }, i: number) =>
+    `<tr class="${r.isPlayer ? 'mine' : ''}">
+      <td class="pos">${i + 1}</td>
+      <td><span class="dot" style="background:${r.color}"></span>${esc(r.name)}</td>
+      <td class="pts">${r.points}</td>
+    </tr>`;
+
   app.innerHTML = `
-    <div class="setup" data-test="season-end">
+    <div class="setup wide" data-test="season-end">
       <h1>🏆 Сезон завершено</h1>
-      <p class="sub">${esc(tStand[0]!.name)} — чемпіон світу серед конструкторів.</p>
-      <p class="hint">Твоя команда: <b>${pos}-е місце</b>, ${tStand[pos - 1]?.points ?? 0} очок за 24 етапи.
-      Фірмових трас здобуто: ${s.homeTracks.length}.</p>
-      <button class="btn primary big" data-test="restart">Новий сезон</button>
+      <p class="sub"><b>${esc(champion.name)}</b> — чемпіон світу.
+      Кубок конструкторів — <b>${esc(tStand[0]!.name)}</b>.</p>
+
+      <p class="results-sum" data-test="season-summary">
+        Твій сезон: <b>${pos}-е місце</b> в кубку конструкторів, <b>${totalPoints}</b> очок за 24 етапи.
+        Найкращий фініш — <b>${myBest === 99 ? '—' : `P${myBest}`}</b>.
+        Зароблено <b>${totalRp} RP</b>, вдалих ставок — <b>${betsWon}/24</b>.
+        ${s.homeTracks.length > 0 ? `Фірмові траси: <b>${esc(homes)}</b> — вони твої й наступного сезону.` : 'Фірмових трас поки немає — перша перемога зробить трасу твоєю назавжди.'}
+      </p>
+
+      <div class="finale-grid">
+        <div>
+          <h3 class="finale-h">Пілоти · топ-10</h3>
+          <table class="grid-table"><tbody>
+            ${dStand.slice(0, 10).map(row).join('')}
+          </tbody></table>
+        </div>
+        <div>
+          <h3 class="finale-h">Конструктори</h3>
+          <table class="grid-table"><tbody>
+            ${tStand.map(row).join('')}
+          </tbody></table>
+        </div>
+      </div>
+
+      <div class="finale-actions">
+        <button class="btn primary big" data-test="restart-carry">Новий сезон — з фірмовими трасами</button>
+        <button class="btn" data-test="restart">Почати з чистого аркуша</button>
+      </div>
     </div>`;
+
+  // Кар'єра: фірмові траси — це пам'ять, яку сезон передає наступному
+  app.querySelector('[data-test="restart-carry"]')!.addEventListener('click', () => {
+    const next = newSeason(s.teamId, s.length, Math.floor(Math.random() * 1e6) + 1);
+    next.homeTracks = [...s.homeTracks];
+    season = next;
+    save(next);
+    showHub();
+  });
   app.querySelector('[data-test="restart"]')!.addEventListener('click', () => {
     clearSave();
     showMenu();

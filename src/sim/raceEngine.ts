@@ -143,7 +143,8 @@ export class Race {
     const pitLossTotal = this.track.pitLoss;
     for (const car of cars) {
       const driver = this.drivers.get(car.driverId)!;
-      const plan = planForDriver(this.track, this.totalLaps, driver, pitLossTotal, this.rng);
+      const wearMult = this.teams.get(car.teamId)?.tyreWear ?? 1;
+      const plan = planForDriver(this.track, this.totalLaps, driver, pitLossTotal, this.rng, wearMult);
       this.brains.set(car.driverId, createBrain(plan, this.rng));
       // Стартова гума — з плану
       const first = plan.stints[0]?.compound ?? 'medium';
@@ -306,9 +307,11 @@ export class Race {
     const driver = this.drivers.get(driverId);
     if (!car || !driver) return null;
 
+    const wearMult = this.teams.get(car.teamId)?.tyreWear ?? 1;
     const plans = [1, 2, 3].map((stops) => ({
       stops,
-      cost: planWithStops(this.track, this.totalLaps, driver, this.track.pitLoss, stops).cost,
+      cost: planWithStops(this.track, this.totalLaps, driver, this.track.pitLoss, stops, wearMult)
+        .cost,
     }));
     const best = plans.reduce((a, b) => (b.cost < a.cost ? b : a));
     const chosen = plans.find((p) => p.stops === car.stops);
@@ -417,7 +420,16 @@ export class Race {
       }
       if (car.isPlayer && !car.autoStrategy) continue;
 
-      const decision = decidePit(car, brain, s, this.track, driver, team.strategy, this.rng);
+      const decision = decidePit(
+        car,
+        brain,
+        s,
+        this.track,
+        driver,
+        team.strategy,
+        this.rng,
+        team.tyreWear ?? 1,
+      );
       car.pitRequest = decision?.compound ?? null;
       if (decision) pitReasons.set(car.driverId, decision.reason);
     }
@@ -491,7 +503,7 @@ export class Race {
           car.driverId,
         );
       } else {
-        ageTyre(car.tyre, this.track, driver, car.paceMode, s.weather);
+        ageTyre(car.tyre, this.track, driver, car.paceMode, s.weather, team.tyreWear ?? 1);
       }
 
       car.fuelKg = Math.max(0, car.fuelKg - fuelBurn(this.track, s.flag));
