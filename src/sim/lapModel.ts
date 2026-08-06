@@ -14,6 +14,7 @@
 //         + шум
 
 import {
+  COMPOUNDS,
   DIRTY_AIR,
   FUEL_EFFECT,
   LAP_NOISE_MAX,
@@ -28,7 +29,15 @@ import {
 import { stepEnergy } from './energy.ts';
 import type { Rng } from './rng.ts';
 import { tyreDelta } from './tyres.ts';
-import type { CarState, Driver, FlagState, Team, Track, WeatherState } from './types.ts';
+import type {
+  CarState,
+  CompoundId,
+  Driver,
+  FlagState,
+  Team,
+  Track,
+  WeatherState,
+} from './types.ts';
 
 export interface LapContext {
   track: Track;
@@ -151,6 +160,26 @@ function wetPenalty(weather: WeatherState, _driver: Driver, car: CarState): numb
     factor = car.tyre.compound === 'inter' || car.tyre.compound === 'wet' ? 0.15 : 1;
   }
   return base * factor;
+}
+
+/**
+ * Скільки секунд на колі коштує ця гума проти НАЙКРАЩОЇ для цієї погоди.
+ * Ті самі числа, що й у wetPenalty + offset суміші — для чесного розбору
+ * після гонки («3 кола на сліках під дощем — ≈14 с»). Без стиснення:
+ * движок множить на compression сам.
+ */
+export function tyreWeatherLoss(weather: WeatherState, compound: CompoundId): number {
+  const cost = (c: CompoundId): number => {
+    const offset = COMPOUNDS[c].offset;
+    if (weather === 'dry') return c === 'wet' ? 8.0 + offset : c === 'inter' ? 3.5 + offset : 0;
+    const base = WET_PENALTY[weather] ?? 0;
+    const dry = c !== 'wet' && c !== 'inter';
+    const factor =
+      weather === 'rain' ? (c === 'wet' ? 0.15 : c === 'inter' ? 0.45 : 1) : dry ? 1 : 0.15;
+    return base * factor + (dry ? 0 : offset);
+  };
+  const best = weather === 'dry' ? 'soft' : weather === 'rain' ? 'wet' : 'inter';
+  return Math.max(0, cost(compound) - cost(best));
 }
 
 /**

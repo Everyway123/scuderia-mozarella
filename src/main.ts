@@ -532,7 +532,9 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
     .join('');
 
   // Розбір стратегії: гонка стає уроком, а не лише результатом. Це та сама
-  // математика планувальника, з якою гравець боровся, — тож цифрам можна вірити.
+  // математика планувальника й моделі кола, з якою гравець боровся, — тож
+  // цифри тут не думка, а рахунок: скільки коштувало кожне рішення і де
+  // фінішував би пілот без цих втрат.
   let debrief = '';
   const myCars = race.playerCars();
   if (myCars.length > 0) {
@@ -541,19 +543,49 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
         const d = race.debrief(car.driverId);
         const drv = race.driver(car.driverId);
         if (!d || !drv) return '';
-        if (car.status === 'dnf') return `<li><b>${esc(drv.short)}</b> — схід, розбирати нічого.</li>`;
+        if (car.status === 'dnf')
+          return `<li><b>${esc(drv.short)}</b> — схід (${esc(car.dnfReason ?? '')}). Обережніший темп знижує ризик.</li>`;
 
-        const wasBest = d.stops === d.bestStops && Number.isFinite(d.lostToBest);
-        const strat = wasBest
-          ? `${d.stops}-стоп — оптимальний вибір`
-          : Number.isFinite(d.lostToBest)
-            ? `${d.stops}-стоп; ${d.bestStops}-стоп був би на ~${d.lostToBest.toFixed(1)} с швидший`
-            : `${d.stops} зупинок — поза розрахунковою сіткою стратега`;
-        const wet =
-          d.wrongTyreLaps > 0
-            ? ` Невідповідна погоді гума: <b>${d.wrongTyreLaps} кіл</b> — тут ховались секунди.`
+        const pos = classification.find((c) => c.driver.id === car.driverId)?.position ?? 0;
+        const bits: string[] = [];
+
+        // Що саме коштувало секунд — по одному факту на причину
+        if (d.wrongTyreLoss >= 3) {
+          const n = d.wrongTyreLaps;
+          const laps = n % 10 === 1 && n % 100 !== 11 ? 'коло' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'кола' : 'кіл';
+          bits.push(
+            `${n} ${laps} на гумі не під погоду ≈ <b>${d.wrongTyreLoss.toFixed(0)} с</b>`,
+          );
+        }
+        if (Number.isFinite(d.lostToBest) && d.lostToBest >= 3) {
+          bits.push(
+            `${d.stops}-стоп проти оптимального ${d.bestStops}-стоп ≈ <b>${d.lostToBest.toFixed(0)} с</b>`,
+          );
+        }
+        if (d.penalty >= 5) bits.push(`штрафи <b>+${d.penalty} с</b>`);
+
+        // Чиста гонка: втрат немає, різниця — темп боліда
+        if (bits.length === 0) {
+          return `<li><b>${esc(drv.short)}</b> · P${pos}: чиста гонка без втрат — ${
+            d.stops === d.bestStops ? `${d.stops}-стоп був оптимумом` : 'стратегія в межах оптимуму'
+          }. Далі вирішує лише темп боліда.</li>`;
+        }
+
+        // Головна порада — від найбільшої втрати
+        const worstIsTyre =
+          d.wrongTyreLoss >= Math.max(Number.isFinite(d.lostToBest) ? d.lostToBest : 0, d.penalty);
+        const tip = worstIsTyre
+          ? 'Дивись на РАДАР: міняй гуму, щойно клітинки показують дощ — ще до перших крапель.'
+          : d.penalty >= Math.max(d.wrongTyreLoss, Number.isFinite(d.lostToBest) ? d.lostToBest : 0)
+            ? 'Штрафи приходять за агресію в трафіку: менше «5» темпу, коли попереду щільно.'
+            : `Наступного разу тримай план на ${d.bestStops} зупин${d.bestStops === 1 ? 'ку' : 'ки'} — «СТРАТЕГІЯ: АВТО» веде саме його.`;
+
+        const potential =
+          d.potentialPosition !== null && d.potentialPosition < pos
+            ? ` Без цих втрат — приблизно <b>P${d.potentialPosition}</b> замість P${pos}.`
             : '';
-        return `<li><b>${esc(drv.short)}</b>: ${strat}.${wet}</li>`;
+
+        return `<li><b>${esc(drv.short)}</b> · P${pos}: ${bits.join('; ')}.${potential} ${esc(tip)}</li>`;
       })
       .join('');
     debrief = `<div class="debrief" data-test="debrief">

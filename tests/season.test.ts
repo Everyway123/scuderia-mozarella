@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { DRIVERS_2026, driversOfTeam } from '../src/data/drivers2026.ts';
 import { TEAMS_2026 } from '../src/data/teams2026.ts';
 import { TRACK_BY_ID } from '../src/data/tracks2026.ts';
-import { PART_BY_ID, PARTS } from '../src/season/parts.ts';
+import { isPureUpgrade, PART_BY_ID, PARTS } from '../src/season/parts.ts';
 import {
   CHIPS,
   canUseChip,
@@ -158,6 +158,26 @@ describe('картки розробки (Monopoly: колода машини)', 
     const first = offersFor(s)[0]!;
     s.parts.push(first);
     expect(offersFor(s)).not.toContain(first);
+  });
+
+  it('серед пропозицій завжди є картка без мінусів', () => {
+    // Раунд із самих болючих компромісів лишав би обережного гравця без ходу
+    for (const seed of [1, 7, 42, 99, 20260805]) {
+      const s = newSeason('haas', 25, seed);
+      for (let round = 1; round <= 24; round++) {
+        s.round = round;
+        const offers = offersFor(s);
+        if (offers.length === 0) continue;
+        const purePoolLeft = PARTS.some(
+          (p) => !s.parts.includes(p.id) && isPureUpgrade(p),
+        );
+        if (!purePoolLeft) continue;
+        expect(
+          offers.some((id) => isPureUpgrade(PART_BY_ID.get(id)!)),
+          `seed ${seed}, етап ${round}: усі три пропозиції з мінусами`,
+        ).toBe(true);
+      }
+    }
   });
 
   it('пропозиції змінюються від етапу до етапу', () => {

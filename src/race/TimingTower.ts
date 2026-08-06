@@ -16,6 +16,7 @@ interface Row {
   name: HTMLSpanElement;
   tyre: HTMLSpanElement;
   age: HTMLSpanElement;
+  wear: HTMLDivElement;
   gap: HTMLSpanElement;
   battery: HTMLDivElement;
   index: number;
@@ -27,11 +28,17 @@ export class TimingTower {
   private readonly host: HTMLElement;
   private readonly teams: Map<string, Team>;
   private readonly drivers: Map<string, Driver>;
+  private players = new Set<string>();
 
   constructor(host: HTMLElement, teams: Map<string, Team>, drivers: Map<string, Driver>) {
     this.host = host;
     this.teams = teams;
     this.drivers = drivers;
+  }
+
+  /** Машини гравця — їхні рядки підсвічуються, щоб «своїх» було видно одразу. */
+  setPlayers(driverIds: string[]): void {
+    this.players = new Set(driverIds);
   }
 
   setFocus(driverId: string | null): void {
@@ -53,6 +60,7 @@ export class TimingTower {
 
     const el = document.createElement('div');
     el.className = 'tt-row';
+    if (this.players.has(car.driverId)) el.classList.add('mine');
     el.style.setProperty('--team', team.color);
 
     const pos = document.createElement('span');
@@ -71,6 +79,14 @@ export class TimingTower {
     const age = document.createElement('span');
     age.className = 'tt-age';
 
+    // Живий знос гуми — і суперників теж: рахувати чужі комплекти й ловити
+    // момент чужого піта — це і є гра в стратегію (уклін Motorsport Manager)
+    const wearWrap = document.createElement('div');
+    wearWrap.className = 'tt-wear';
+    const wear = document.createElement('div');
+    wear.className = 'tt-wear-fill';
+    wearWrap.appendChild(wear);
+
     const gap = document.createElement('span');
     gap.className = 'tt-gap';
 
@@ -80,13 +96,13 @@ export class TimingTower {
     battery.className = 'tt-bat-fill';
     batWrap.appendChild(battery);
 
-    el.append(pos, bar, name, tyre, age, gap, batWrap);
+    el.append(pos, bar, name, tyre, age, wearWrap, gap, batWrap);
     el.addEventListener('click', () => {
       this.focusId = this.focusId === car.driverId ? null : car.driverId;
     });
     this.host.appendChild(el);
 
-    return { el, pos, name, tyre, age, gap, battery, index: -1 };
+    return { el, pos, name, tyre, age, wear, gap, battery, index: -1 };
   }
 
   get focus(): string | null {
@@ -123,6 +139,12 @@ export class TimingTower {
       row.tyre.classList.toggle('is-cliff', car.tyreWear > spec.cliff);
 
       row.age.textContent = dnf ? '' : String(car.tyreAge);
+
+      // Знос у лайві: зелений — свіжа, жовтий — підходить до кліфа, червоний — за ним
+      const wearPct = Math.max(0, Math.min(100, car.tyreWear * 100));
+      row.wear.style.width = dnf ? '0%' : `${wearPct}%`;
+      row.wear.style.background =
+        car.tyreWear > spec.cliff ? '#ff4d4d' : car.tyreWear > spec.cliff * 0.75 ? '#ffd23f' : '#39ff88';
 
       if (dnf) row.gap.textContent = 'СХІД';
       else if (car.position === 1) row.gap.textContent = 'ЛІДЕР';

@@ -141,6 +141,8 @@ export interface CarState {
   penalties: number;
   /** Кіл на гумі, що не відповідає погоді — для післягоночного розбору. */
   wrongTyreLaps: number;
+  /** Оцінка втрачених на цій гумі секунд — та сама математика, що в моделі кола. */
+  wrongTyreLoss: number;
   isPlayer: boolean;
   /**
    * Чи планує піт-стопи ШІ. Для машин гравця темп, енергія й Override завжди його,

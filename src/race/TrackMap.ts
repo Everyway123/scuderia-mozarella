@@ -96,6 +96,7 @@ export class TrackMap {
     teams: Map<string, Team>,
     drivers: Map<string, Driver>,
     focusId: string | null,
+    playerIds: ReadonlySet<string> = new Set(),
   ): void {
     const { ctx } = this;
     const { scale, ox, oy } = this.fit();
@@ -108,7 +109,7 @@ export class TrackMap {
     this.drawRibbon(frame);
     this.drawOverrideZones();
     this.drawStartLine();
-    this.drawCars(frame, teams, drivers, focusId, scale);
+    this.drawCars(frame, teams, drivers, focusId, scale, playerIds);
 
     ctx.restore();
   }
@@ -189,6 +190,7 @@ export class TrackMap {
     drivers: Map<string, Driver>,
     focusId: string | null,
     scale: number,
+    playerIds: ReadonlySet<string>,
   ): void {
     const { ctx } = this;
     const draw = this.spreadForDisplay(frame);
@@ -205,13 +207,15 @@ export class TrackMap {
 
       const pos = this.carPoint(car, draw.get(car.driverId) ?? car.fraction);
       const focused = car.driverId === focusId;
-      const r = focused ? 10 : 8;
+      const isMine = playerIds.has(car.driverId);
+      const r = focused || isMine ? 10 : 8;
 
-      // Ореол навколо машини, за якою стежимо
-      if (focused) {
+      // Ореол: навколо машини, за якою стежимо, і навколо своїх —
+      // «де наша стратегія» має читатись з мапи одним поглядом
+      if (focused || isMine) {
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, r + 7, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,255,255,0.14)';
+        ctx.arc(pos.x, pos.y, r + 8, 0, Math.PI * 2);
+        ctx.fillStyle = isMine ? 'rgba(87,227,255,0.20)' : 'rgba(255,255,255,0.14)';
         ctx.fill();
       }
 
@@ -220,7 +224,7 @@ export class TrackMap {
       ctx.fillStyle = car.inPit ? '#555b66' : team.color;
       ctx.fill();
       ctx.lineWidth = 2.5;
-      ctx.strokeStyle = focused ? '#ffffff' : 'rgba(0,0,0,0.55)';
+      ctx.strokeStyle = focused || isMine ? '#ffffff' : 'rgba(0,0,0,0.55)';
       ctx.stroke();
 
       // Обідок кольору суміші — видно стратегію просто на мапі
@@ -232,9 +236,10 @@ export class TrackMap {
 
       // Підпис ставимо тільки якщо він не влізе в кашу з сусідами.
       // На старті пелотон стоїть щільно — там читається сама мапа, не імена.
+      // Свої машини підписані ЗАВЖДИ.
       const crowded = placed.some((p) => Math.hypot(p.x - pos.x, p.y - pos.y) < 46);
       placed.push(pos);
-      if (crowded && !focused && car.position > 3) continue;
+      if (crowded && !focused && !isMine && car.position > 3) continue;
 
       // Якщо над машиною підпис зіткнеться з уже намальованим (топ-3 у
       // щільному поїзді) — перекидаємо його під машину
@@ -244,7 +249,7 @@ export class TrackMap {
       }
       labels.push({ x: pos.x, y: ly });
 
-      ctx.fillStyle = focused ? '#ffffff' : 'rgba(255,255,255,0.82)';
+      ctx.fillStyle = focused || isMine ? '#ffffff' : 'rgba(255,255,255,0.82)';
       ctx.font = `700 ${Math.round(13 / Math.max(0.35, scale) + 5)}px system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';

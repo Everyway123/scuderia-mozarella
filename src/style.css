@@ -282,7 +282,7 @@ input {
   right: 0;
   height: var(--row-h);
   display: grid;
-  grid-template-columns: 24px 3px 40px 20px 20px 1fr 38px;
+  grid-template-columns: 24px 3px 40px 20px 16px 26px 1fr 38px;
   align-items: center;
   gap: 7px;
   padding: 0 10px;
@@ -353,6 +353,19 @@ input {
   font-size: 11px;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
+}
+
+/* Живий знос гуми кожної машини — суперників теж */
+.tt-wear {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.tt-wear-fill {
+  height: 100%;
+  transition: width 0.3s linear, background 0.3s;
 }
 
 .tt-gap {
@@ -515,6 +528,17 @@ input {
 /* На прискоренні перестановка рядків миттєва — інакше вежа не встигає */
 .tower.no-anim .tt-row {
   transition: none;
+}
+
+/* Свої машини — підсвічені: «де наша стратегія» видно одним поглядом */
+.tt-row.mine {
+  background: rgba(87, 227, 255, 0.09);
+  box-shadow: inset 3px 0 0 #57e3ff;
+}
+
+.tt-row.mine .tt-name {
+  color: #ffffff;
+  font-weight: 800;
 }
 
 /* ================= ПІТВОЛ ================= */

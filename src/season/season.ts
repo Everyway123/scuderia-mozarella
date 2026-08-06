@@ -9,7 +9,7 @@ import { TRACKS_2026 } from '../data/tracks2026.ts';
 import type { ClassifiedCar } from '../sim/raceEngine.ts';
 import { Rng } from '../sim/rng.ts';
 import type { RaceLength, Team } from '../sim/types.ts';
-import { OFFER_SIZE, PART_BY_ID, PARTS } from './parts.ts';
+import { isPureUpgrade, OFFER_SIZE, PART_BY_ID, PARTS } from './parts.ts';
 
 export const SAVE_KEY = 'scuderiaMozarellaSeason1';
 const SAVE_VERSION = 2;
@@ -123,6 +123,16 @@ export function offersFor(state: SeasonState): string[] {
   while (out.length < OFFER_SIZE && pool.length > 0) {
     const i = Math.floor(rng.next() * pool.length);
     out.push(pool.splice(i, 1)[0]!);
+  }
+
+  // Серед пропозицій завжди є хоч одна картка без мінусів — раунд із самих
+  // болючих компромісів лишав би обережного гравця взагалі без ходу
+  const hasPure = out.some((id) => isPureUpgrade(PART_BY_ID.get(id)!));
+  if (!hasPure) {
+    const pures = pool.filter((id) => isPureUpgrade(PART_BY_ID.get(id)!));
+    if (pures.length > 0 && out.length > 0) {
+      out[out.length - 1] = pures[Math.floor(rng.next() * pures.length)]!;
+    }
   }
   return out;
 }

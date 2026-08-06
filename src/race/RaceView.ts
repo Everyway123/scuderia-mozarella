@@ -52,6 +52,9 @@ export class RaceView {
   private readonly radio: RadioFeed;
   private readonly teamMap: Map<string, Team>;
   private readonly driverMap: Map<string, Driver>;
+  private playerIds = new Set<string>();
+  /** Чи вже питали про вікно цього конкретного сейфті-кара. */
+  private scAsked = false;
 
   private simTime = 0;
   private readonly baseSpeed: number;
@@ -112,6 +115,8 @@ export class RaceView {
     this.map = new TrackMap(q<HTMLCanvasElement>('#trackCanvas'));
     this.map.setTrack(opts.track.id);
     this.tower = new TimingTower(q('#tower'), this.teamMap, this.driverMap);
+    this.playerIds = new Set(this.race.playerCars().map((c) => c.driverId));
+    this.tower.setPlayers([...this.playerIds]);
     this.pitwall = new PitwallPanel(q('#pitwall'), this.race);
     this.radio = new RadioFeed(q('#radio'), q('#banner'), this.race);
 
@@ -241,8 +246,13 @@ export class RaceView {
     const compound = this.pitwall.suggestedCompound(this.replay.sample(this.simTime));
 
     // 1. Сейфті-кар — заїзд коштує вдвічі дешевше. Найдорожче вікно гонки.
-    if (state.flag !== 'green' && !this.firedPrompts.has(`sc-${lap}`)) {
-      this.firedPrompts.add(`sc-${lap}`);
+    //    Питаємо РАЗ на один сейфті-кар, а не щокола: після відповіді
+    //    (тим паче після заїзду) те саме питання — це вже спам.
+    //    І не питаємо взагалі, коли обидві машини щойно з боксів.
+    if (state.flag === 'green') this.scAsked = false;
+    const scWorthAsking = alive.some((c) => c.tyre.age > 2 && !c.pitRequest);
+    if (state.flag !== 'green' && !this.scAsked && scWorthAsking) {
+      this.scAsked = true;
       this.ask({
         id: 'sc',
         title: '🟡 СЕЙФТІ-КАР',
@@ -517,7 +527,7 @@ export class RaceView {
     }
 
     const frame = this.replay.sample(this.simTime);
-    this.map.render(frame, this.teamMap, this.driverMap, this.tower.focus);
+    this.map.render(frame, this.teamMap, this.driverMap, this.tower.focus, this.playerIds);
     this.tower.render(frame);
     this.pitwall.render(frame);
     this.radio.update(frame.leaderLap, this.simTime);

@@ -14,7 +14,7 @@ import {
   STEWARD_PENALTY,
   TWO_COMPOUND_PENALTY,
 } from './constants.ts';
-import { computeLap, fuelBurn, startingFuel } from './lapModel.ts';
+import { computeLap, fuelBurn, startingFuel, tyreWeatherLoss } from './lapModel.ts';
 import {
   checkDnf,
   checkMistake,
@@ -182,6 +182,7 @@ export class Race {
       penaltyReason: null,
       penalties: 0,
       wrongTyreLaps: 0,
+      wrongTyreLoss: 0,
       isPlayer: driver.teamId === this.playerTeamId,
       autoStrategy: true,
       manualPace: false,
@@ -288,10 +289,18 @@ export class Race {
   debrief(driverId: string): {
     stops: number;
     wrongTyreLaps: number;
+    /** Оцінка секунд, втрачених на гумі не під погоду. */
+    wrongTyreLoss: number;
+    /** Післягоночні штрафи, с. */
+    penalty: number;
     plans: { stops: number; cost: number }[];
     bestStops: number;
     /** Наскільки обрана кількість зупинок дорожча за оптимум, с. 0 — оптимум. */
     lostToBest: number;
+    /** Сума втрат, яких можна було уникнути рішеннями, с. */
+    avoidable: number;
+    /** Де б машина фінішувала без цих втрат (за реальними гапами). */
+    potentialPosition: number | null;
   } | null {
     const car = this.state.cars.find((c) => c.driverId === driverId);
     const driver = this.drivers.get(driverId);
@@ -303,14 +312,33 @@ export class Race {
     }));
     const best = plans.reduce((a, b) => (b.cost < a.cost ? b : a));
     const chosen = plans.find((p) => p.stops === car.stops);
+    // Нуль зупинок або більше трьох — поза таблицею; там втрату чесно не порахувати
+    const lostToBest = chosen ? chosen.cost - best.cost : Number.NaN;
+
+    const avoidable =
+      car.wrongTyreLoss + car.penalty + (Number.isFinite(lostToBest) ? Math.max(0, lostToBest) : 0);
+
+    // «Без цих втрат — приблизно P(n)»: віднімаємо збережені секунди від
+    // фінішного часу й дивимось, скільки фінішерів усе одно попереду
+    let potentialPosition: number | null = null;
+    if (this.state.finished && car.status !== 'dnf') {
+      // Штрафи вже додані до totalTime у момент вироку — віднімаємо лише avoidable
+      const finishers = this.state.cars.filter((c) => c.status !== 'dnf');
+      const virtual = car.totalTime - avoidable;
+      potentialPosition =
+        1 + finishers.filter((c) => c.driverId !== driverId && c.totalTime < virtual).length;
+    }
 
     return {
       stops: car.stops,
       wrongTyreLaps: car.wrongTyreLaps,
+      wrongTyreLoss: car.wrongTyreLoss,
+      penalty: car.penalty,
       plans,
       bestStops: best.stops,
-      // Нуль зупинок або більше трьох — поза таблицею; там втрату чесно не порахувати
-      lostToBest: chosen ? chosen.cost - best.cost : Number.NaN,
+      lostToBest,
+      avoidable,
+      potentialPosition,
     };
   }
 
@@ -406,6 +434,8 @@ export class Race {
       const onSlicks = DRY_COMPOUNDS.includes(car.tyre.compound);
       if ((s.weather !== 'dry' && onSlicks) || (s.weather === 'dry' && !onSlicks)) {
         car.wrongTyreLaps += 1;
+        car.wrongTyreLoss +=
+          tyreWeatherLoss(s.weather, car.tyre.compound) * (this.track.compression ?? 1);
       }
 
       const result = computeLap(car, {

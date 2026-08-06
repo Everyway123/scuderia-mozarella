@@ -51,7 +51,7 @@ export const TEAMS_2026: Team[] = [
     color: '#e8002d',
     accent: '#2a0008',
     pace: 0.35,
-    reliability: 1.0,
+    reliability: 0.9,
     pitCrew: 2.4,
     pitCrewSd: 0.24,
     strategy: 0.76,
