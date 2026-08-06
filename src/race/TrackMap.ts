@@ -195,6 +195,7 @@ export class TrackMap {
     // Малюємо з хвоста, щоб лідер і машина гравця лягли зверху
     const order = [...frame.cars].sort((a, b) => a.progress - b.progress);
     const placed: { x: number; y: number }[] = [];
+    const labels: { x: number; y: number }[] = [];
 
     for (const car of order) {
       if (car.status === 'dnf') continue;
@@ -235,14 +236,22 @@ export class TrackMap {
       placed.push(pos);
       if (crowded && !focused && car.position > 3) continue;
 
+      // Якщо над машиною підпис зіткнеться з уже намальованим (топ-3 у
+      // щільному поїзді) — перекидаємо його під машину
+      let ly = pos.y - r - 12;
+      if (labels.some((l) => Math.abs(l.x - pos.x) < 52 && Math.abs(l.y - ly) < 24)) {
+        ly = pos.y + r + 13;
+      }
+      labels.push({ x: pos.x, y: ly });
+
       ctx.fillStyle = focused ? '#ffffff' : 'rgba(255,255,255,0.82)';
       ctx.font = `700 ${Math.round(13 / Math.max(0.35, scale) + 5)}px system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 4;
       ctx.strokeStyle = 'rgba(6,8,11,0.85)';
-      ctx.strokeText(driver.short, pos.x, pos.y - r - 12);
-      ctx.fillText(driver.short, pos.x, pos.y - r - 12);
+      ctx.strokeText(driver.short, pos.x, ly);
+      ctx.fillText(driver.short, pos.x, ly);
     }
   }
 
@@ -254,22 +263,22 @@ export class TrackMap {
    * зберігаючи порядок. Цифри у вежі часів лишаються справжніми.
    */
   private spreadForDisplay(frame: RaceFrame): Map<string, number> {
-    const minGap = 21 / Math.max(1, this.length);
+    const minGap = 24 / Math.max(1, this.length);
     const out = new Map<string, number>();
-    const alive = frame.cars.filter((c) => c.status !== 'dnf');
 
+    // Рахуємо на progress (кола + частка), а не на частці кола: progress
+    // монотонно спадає вздовж пелотона й не має шва 1→0. Стара версія
+    // працювала на fraction — і на стартовій лінії сусіди мінялись місцями,
+    // формула відстані плуталась, і поїзд сейфті-кара злипався в одну пляму.
     let prev: number | null = null;
-    for (const car of alive) {
-      let f = car.fraction;
-      if (prev !== null) {
-        // Той, хто позаду, не може опинитись ближче за minGap до попереднього
-        const behind = prev - f;
-        const wrapped = behind < 0 ? behind + 1 : behind;
-        if (wrapped < minGap) f = prev - minGap;
-      }
-      f = ((f % 1) + 1) % 1;
-      out.set(car.driverId, f);
-      prev = f;
+    for (const car of frame.cars) {
+      if (car.status === 'dnf') continue;
+      let p = car.progress;
+      // Той, хто позаду, не може бути ближче за minGap до попереднього.
+      // Кола різниці (круговані) дають prev − p ≫ minGap — їх не чіпаємо.
+      if (prev !== null && prev - p < minGap) p = prev - minGap;
+      out.set(car.driverId, ((p % 1) + 1) % 1);
+      prev = p;
     }
     return out;
   }

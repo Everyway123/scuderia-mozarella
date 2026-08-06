@@ -127,9 +127,72 @@ export class RaceView {
     window.addEventListener('resize', this.onResize);
     window.addEventListener('keydown', this.onKey);
 
+    this.initDividers(host);
+
     this.map.resize();
     this.lastFrame = performance.now();
     this.loop();
+  }
+
+  /**
+   * Межі панелей можна тягати ліворуч-праворуч. Ширина живе у CSS-змінних
+   * на .race-body: базові правила читають var(), а мобільна розкладка
+   * (колонкою) перекриває їх своїм width: 100% — тож на телефоні збережене
+   * значення нічого не ламає. Вибір запам'ятовується в localStorage.
+   */
+  private initDividers(host: HTMLElement): void {
+    const body = host.querySelector<HTMLElement>('.race-body');
+    if (!body) return;
+
+    const restore = [
+      ['pitwallW', '--pw-w'],
+      ['towerW', '--tower-w'],
+    ] as const;
+    for (const [key, cssVar] of restore) {
+      const saved = Number(localStorage.getItem(key));
+      if (saved >= 200 && saved <= 480) body.style.setProperty(cssVar, `${saved}px`);
+    }
+
+    const wire = (
+      handle: HTMLElement | null,
+      panel: HTMLElement | null,
+      key: string,
+      cssVar: string,
+      dir: 1 | -1,
+    ) => {
+      if (!handle || !panel) return;
+      handle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        handle.setPointerCapture(e.pointerId);
+        handle.classList.add('on');
+        const startX = e.clientX;
+        const startW = panel.getBoundingClientRect().width;
+
+        const move = (ev: PointerEvent) => {
+          const w = Math.round(Math.min(480, Math.max(200, startW + dir * (ev.clientX - startX))));
+          body.style.setProperty(cssVar, `${w}px`);
+          this.map.resize();
+        };
+        const up = () => {
+          handle.classList.remove('on');
+          handle.removeEventListener('pointermove', move);
+          handle.removeEventListener('pointerup', up);
+          handle.removeEventListener('pointercancel', up);
+          try {
+            localStorage.setItem(key, String(Math.round(panel.getBoundingClientRect().width)));
+          } catch {
+            /* приватний режим — просто не запам'ятається */
+          }
+        };
+        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointerup', up);
+        handle.addEventListener('pointercancel', up);
+      });
+    };
+
+    // Ліва межа: тягнеш праворуч — вежа ширшає. Права: тягнеш праворуч — пітвол вужчає.
+    wire(host.querySelector('#dragTower'), host.querySelector('.tower-wrap'), 'towerW', '--tower-w', 1);
+    wire(host.querySelector('#dragPit'), host.querySelector('.pitwall'), 'pitwallW', '--pw-w', -1);
   }
 
   private onResize(): void {
@@ -520,12 +583,16 @@ const TEMPLATE = `
       <div class="tower" id="tower"></div>
     </aside>
 
+    <div class="drag" id="dragTower" title="Тягни, щоб змінити ширину"></div>
+
     <main class="map-wrap">
       <canvas id="trackCanvas"></canvas>
       <div class="banner" id="banner"></div>
       <div class="prompt" id="prompt"></div>
       <div class="radio" id="radio"></div>
     </main>
+
+    <div class="drag" id="dragPit" title="Тягни, щоб змінити ширину"></div>
 
     <aside class="pitwall" id="pitwall"></aside>
   </div>

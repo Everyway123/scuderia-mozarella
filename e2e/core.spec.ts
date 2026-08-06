@@ -153,3 +153,30 @@ test('E7: прискорення й «до фінішу» не ламають с
 
   expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
 });
+
+test('E12: межу пітволу можна тягати, і ширина запамʼятовується', async ({ page }) => {
+  const errors = await openApp(page);
+  await startSeasonRace(page, 'haas');
+
+  const pitwall = page.locator('.pitwall');
+  const before = (await pitwall.boundingBox())!.width;
+
+  // Тягнемо ручку на 120 пікселів ліворуч — пітвол має поширшати
+  const handle = (await page.locator('#dragPit').boundingBox())!;
+  const hx = handle.x + handle.width / 2;
+  const hy = handle.y + handle.height / 2;
+  await page.mouse.move(hx, hy);
+  await page.mouse.down();
+  await page.mouse.move(hx - 120, hy, { steps: 6 });
+  await page.mouse.up();
+
+  const after = (await pitwall.boundingBox())!.width;
+  expect(after - before).toBeGreaterThan(90);
+  expect(after - before).toBeLessThan(150);
+
+  // Вибір записано — наступна гонка відкриється з цією ж шириною
+  const stored = Number(await page.evaluate(() => localStorage.getItem('pitwallW')));
+  expect(stored).toBeGreaterThan(before + 90);
+
+  expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
+});
