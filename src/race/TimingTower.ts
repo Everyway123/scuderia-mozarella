@@ -146,7 +146,10 @@ export class TimingTower {
       row.wear.style.background =
         car.tyreWear > spec.cliff ? '#ff4d4d' : car.tyreWear > spec.cliff * 0.75 ? '#ffd23f' : '#39ff88';
 
+      // «У ПІТАХ» замість інтервалу — щоб чужий заїзд було видно одним оком
+      row.gap.classList.toggle('in-pit', car.pitting && !dnf);
       if (dnf) row.gap.textContent = 'СХІД';
+      else if (car.pitting) row.gap.textContent = 'У ПІТАХ';
       else if (car.position === 1) row.gap.textContent = 'ЛІДЕР';
       else if (car.interval === null) row.gap.textContent = '—';
       else row.gap.textContent = `+${car.interval.toFixed(3)}`;

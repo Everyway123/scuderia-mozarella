@@ -17,11 +17,15 @@ const KIND_ICON: Record<string, string> = {
   weather: '🌧',
   radio: '📻',
   'flat-spot': '⚠',
+  penalty: '⚖',
   start: '🚦',
 };
 
 /** Події, які варті великої плашки поверх мапи. */
-const BANNER_KINDS = new Set(['overtake', 'fastest-lap', 'safety-car', 'dnf', 'weather']);
+const BANNER_KINDS = new Set(['overtake', 'fastest-lap', 'safety-car', 'dnf', 'weather', 'pit']);
+
+/** Плашка лише коли подія наша — чужі обгони й піти йдуть тільки в стрічку. */
+const MINE_ONLY_BANNERS = new Set(['overtake', 'pit']);
 
 export interface Banner {
   text: string;
@@ -115,7 +119,7 @@ export class RadioFeed {
 
     // Велика плашка — тільки для подій, які в трансляції показали б крупно,
     // і тільки якщо вони стосуються нас або лідера гонки
-    if (BANNER_KINDS.has(e.kind) && (mine || e.kind !== 'overtake')) {
+    if (BANNER_KINDS.has(e.kind) && (mine || !MINE_ONLY_BANNERS.has(e.kind))) {
       this.banner = { text: e.text, kind: e.kind, until: now + 2.6 };
       this.bannerHost.className = `banner on ${e.kind}`;
       this.bannerHost.innerHTML = `<span>${KIND_ICON[e.kind] ?? ''}</span><b></b>`;

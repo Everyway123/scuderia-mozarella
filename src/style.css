@@ -288,8 +288,10 @@ input {
   padding: 0 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   cursor: pointer;
-  /* Перестановка рядків — це і є видимий обгін */
-  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Перестановка рядків — це і є видимий обгін. Коротко: номер позиції
+     оновлюється миттєво, і поки рядок їде, «13 стоїть над 12» — що менше
+     вікно цього стану, то менше вежа здається зламаною */
+  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .tt-row:hover {
@@ -366,6 +368,13 @@ input {
 .tt-wear-fill {
   height: 100%;
   transition: width 0.3s linear, background 0.3s;
+}
+
+.tt-gap.in-pit {
+  color: #57e3ff;
+  font-weight: 800;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
 }
 
 .tt-gap {
@@ -1144,6 +1153,13 @@ input {
 .debrief > b {
   font-size: 11px;
   letter-spacing: 0.08em;
+  color: var(--dim);
+}
+
+.debrief-ctx {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
   color: var(--dim);
 }
 

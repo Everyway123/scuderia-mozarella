@@ -184,6 +184,8 @@ export class Race {
       penalties: 0,
       wrongTyreLaps: 0,
       wrongTyreLoss: 0,
+      scPits: 0,
+      flagSaved: 0,
       isPlayer: driver.teamId === this.playerTeamId,
       autoStrategy: true,
       manualPace: false,
@@ -294,6 +296,9 @@ export class Race {
     wrongTyreLoss: number;
     /** Післягоночні штрафи, с. */
     penalty: number;
+    /** Пітів під жовтими прапорами і скільки секунд вони зекономили. */
+    scPits: number;
+    flagSaved: number;
     plans: { stops: number; cost: number }[];
     bestStops: number;
     /** Наскільки обрана кількість зупинок дорожча за оптимум, с. 0 — оптимум. */
@@ -337,6 +342,8 @@ export class Race {
       wrongTyreLaps: car.wrongTyreLaps,
       wrongTyreLoss: car.wrongTyreLoss,
       penalty: car.penalty,
+      scPits: car.scPits,
+      flagSaved: car.flagSaved,
       plans,
       bestStops: best.stops,
       lostToBest,
@@ -437,6 +444,10 @@ export class Race {
     // 2. Чисті часи кола
     const lapTimes = new Map<string, number>();
     const pittedThisLap = new Set<string>();
+    const pitOutcome = new Map<
+      string,
+      { why: string; compound: CompoundId; stationary: number; cost: number; posBefore: number }
+    >();
     for (const car of running) {
       const driver = this.drivers.get(car.driverId)!;
       const team = this.teams.get(car.teamId)!;
@@ -483,7 +494,12 @@ export class Race {
         // Під сейфті-каром пелотон повзе, тож проїзд піт-лейну коштує помітно
         // менше часу відносно суперників — саме тому вікно й цінне
         const lossMult = s.flag === 'safety-car' ? 0.35 : s.flag === 'vsc' ? 0.6 : 1;
-        time += this.track.pitLoss * lossMult + stationary;
+        const pitCost = this.track.pitLoss * lossMult + stationary;
+        time += pitCost;
+        if (lossMult < 1) {
+          car.scPits += 1;
+          car.flagSaved += this.track.pitLoss * (1 - lossMult);
+        }
 
         const compound = car.pitRequest;
         car.tyre = freshTyre(compound);
@@ -496,12 +512,16 @@ export class Race {
         const brain = this.brains.get(car.driverId);
         if (brain) advanceBrain(brain, car, s, this.rng);
 
-        const why = pitReasons.get(car.driverId) ?? 'наказ';
-        this.log(
-          'pit',
-          `${driver.short} у боксах [${why}] — ${COMPOUNDS[compound].label}, стоянка ${stationary.toFixed(2)}`,
-          car.driverId,
-        );
+        // Подію логуватимемо ПІСЛЯ пересортування — щоб у ній був підсумок:
+        // «стоянка, повна ціна, з якої позиції на яку». Інакше гравець мусить
+        // вгадувати результат піту по мінімапі.
+        pitOutcome.set(car.driverId, {
+          why: pitReasons.get(car.driverId) ?? 'наказ',
+          compound,
+          stationary,
+          cost: pitCost,
+          posBefore: car.position,
+        });
       } else {
         ageTyre(car.tyre, this.track, driver, car.paceMode, s.weather, team.tyreWear ?? 1);
       }
@@ -584,6 +604,23 @@ export class Race {
     }
 
     this.resort();
+
+    // 7.5 Підсумки пітів — після пересортування, коли вже видно, куди виїхав:
+    //     «хард, стоянка 2.31 · −22.4 с · P8→P11». Один погляд — уся ціна рішення.
+    for (const [driverId, o] of pitOutcome) {
+      const car = s.cars.find((c) => c.driverId === driverId);
+      if (!car || car.status === 'dnf') continue;
+      const driver = this.drivers.get(driverId)!;
+      const move =
+        o.posBefore === car.position
+          ? `лишився P${car.position}`
+          : `P${o.posBefore}→P${car.position}`;
+      this.log(
+        'pit',
+        `${driver.short} [${o.why}]: ${COMPOUNDS[o.compound].label}, стоянка ${o.stationary.toFixed(2)} · −${o.cost.toFixed(1)} с · ${move}`,
+        driverId,
+      );
+    }
 
     // 8. Фініш
     if (s.lap >= s.totalLaps) {

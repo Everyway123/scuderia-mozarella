@@ -583,12 +583,29 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
     .join('');
 
   // Розбір стратегії: гонка стає уроком, а не лише результатом. Це та сама
-  // математика планувальника й моделі кола, з якою гравець боровся, — тож
-  // цифри тут не думка, а рахунок: скільки коштувало кожне рішення і де
-  // фінішував би пілот без цих втрат.
+  // математика планувальника й моделі кола, з якою гравець боровся, — і розбір
+  // бачить гонку ЦІЛКОМ: сейфті-кари, дощ, сходи, — а не лише арифметику стінтів.
   let debrief = '';
   const myCars = race.playerCars();
   if (myCars.length > 0) {
+    // Контекст гонки — з реальних подій симуляції
+    const events = race.state.events;
+    const scCount = events.filter((e) => e.kind === 'safety-car').length;
+    const wasWet = events.some((e) => e.kind === 'weather');
+    const dnfCount = events.filter((e) => e.kind === 'dnf').length;
+    const ctx = [
+      scCount > 0 ? `сейфті-кар ×${scCount}` : 'без сейфті-карів',
+      wasWet ? 'дощ' : 'суха',
+      dnfCount > 0 ? `сходів: ${dnfCount}` : 'без сходів',
+    ].join(' · ');
+
+    const lapsWord = (n: number) =>
+      n % 10 === 1 && n % 100 !== 11
+        ? 'коло'
+        : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)
+          ? 'кола'
+          : 'кіл';
+
     const lines = myCars
       .map((car) => {
         const d = race.debrief(car.driverId);
@@ -597,15 +614,35 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
         if (car.status === 'dnf')
           return `<li><b>${esc(drv.short)}</b> — схід (${esc(car.dnfReason ?? '')}). Обережніший темп знижує ризик.</li>`;
 
-        const pos = classification.find((c) => c.driver.id === car.driverId)?.position ?? 0;
-        const bits: string[] = [];
+        const cls = classification.find((c) => c.driver.id === car.driverId);
+        const pos = cls?.position ?? 0;
+        const gained = cls?.gained ?? 0;
 
-        // Що саме коштувало секунд — по одному факту на причину
+        // Результат — спершу емоція, потім бухгалтерія
+        const head =
+          pos === 1
+            ? '🏆 <b>Перемога!</b>'
+            : pos <= 3
+              ? `🏅 <b>Подіум — P${pos}</b>${gained > 0 ? ` (+${gained} зі старту)` : ''}.`
+              : `P${pos}${gained > 0 ? ` (<b>+${gained}</b> зі старту)` : gained < 0 ? ` (${gained} зі старту)` : ''}.`;
+
+        // Що ЗІГРАЛО: події гонки, обернуті на нашу користь
+        const wins: string[] = [];
+        if (d.scPits > 0) {
+          wins.push(
+            `піт${d.scPits > 1 ? 'и' : ''} під жовтими зекономи${d.scPits > 1 ? 'ли' : 'в'} ≈ ${d.flagSaved.toFixed(0)} с`,
+          );
+        }
+        if (wasWet && d.wrongTyreLaps === 0) {
+          wins.push('дощ відіграно ідеально: жодного кола на неправильній гумі — це і є радар');
+        }
+        const wonPart = wins.length > 0 ? ` <b>Зіграло:</b> ${wins.join('; ')}.` : '';
+
+        // Що КОШТУВАЛО секунд — по одному факту на причину
+        const bits: string[] = [];
         if (d.wrongTyreLoss >= 3) {
-          const n = d.wrongTyreLaps;
-          const laps = n % 10 === 1 && n % 100 !== 11 ? 'коло' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'кола' : 'кіл';
           bits.push(
-            `${n} ${laps} на гумі не під погоду ≈ <b>${d.wrongTyreLoss.toFixed(0)} с</b>`,
+            `${d.wrongTyreLaps} ${lapsWord(d.wrongTyreLaps)} на гумі не під погоду ≈ <b>${d.wrongTyreLoss.toFixed(0)} с</b>`,
           );
         }
         if (Number.isFinite(d.lostToBest) && d.lostToBest >= 3) {
@@ -615,11 +652,13 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
         }
         if (d.penalty >= 5) bits.push(`штрафи <b>+${d.penalty} с</b>`);
 
-        // Чиста гонка: втрат немає, різниця — темп боліда
+        // Чиста гонка: нічого не втрачено
         if (bits.length === 0) {
-          return `<li><b>${esc(drv.short)}</b> · P${pos}: чиста гонка без втрат — ${
-            d.stops === d.bestStops ? `${d.stops}-стоп був оптимумом` : 'стратегія в межах оптимуму'
-          }. Далі вирішує лише темп боліда.</li>`;
+          const clean =
+            pos <= 3
+              ? 'Стратегію відпрацьовано без жодної втрати.'
+              : 'Чиста гонка без втрат — вище було лише питання темпу боліда.';
+          return `<li><b>${esc(drv.short)}</b> · ${head} ${clean}${wonPart}</li>`;
         }
 
         // Головна порада — від найбільшої втрати
@@ -636,11 +675,13 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
             ? ` Без цих втрат — приблизно <b>P${d.potentialPosition}</b> замість P${pos}.`
             : '';
 
-        return `<li><b>${esc(drv.short)}</b> · P${pos}: ${bits.join('; ')}.${potential} ${esc(tip)}</li>`;
+        return `<li><b>${esc(drv.short)}</b> · ${head} <b>Втрачено:</b> ${bits.join('; ')}.${potential}${wonPart} ${esc(tip)}</li>`;
       })
       .join('');
     debrief = `<div class="debrief" data-test="debrief">
-      <b>📋 Розбір стратегії</b><ul>${lines}</ul>
+      <b>📋 Розбір стратегії</b>
+      <span class="debrief-ctx">Гонка: ${ctx}</span>
+      <ul>${lines}</ul>
     </div>`;
   }
 

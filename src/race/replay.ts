@@ -31,7 +31,10 @@ export interface CarSample {
   fraction: number;
   lap: number;
   status: CarStatus;
+  /** Проїжджає піт-лейн на екрані просто зараз (кінець кола) — для мінімапи. */
   inPit: boolean;
+  /** Коло з піт-стопом узагалі — для вежі, де заїзд має бути видно одразу. */
+  pitting: boolean;
   compound: CompoundId;
   tyreAge: number;
   tyreWear: number;
@@ -192,6 +195,7 @@ export class RaceReplay {
         status: snap.status,
         // Піт-лейн проїжджається наприкінці кола — так це читається на мінімапі
         inPit: snap.pitted && loc.fraction > 0.72,
+        pitting: snap.pitted,
         compound: snap.compound,
         tyreAge: snap.tyreAge,
         tyreWear: snap.tyreWear,
