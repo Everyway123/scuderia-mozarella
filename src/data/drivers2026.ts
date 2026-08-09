@@ -3,6 +3,7 @@
 // Оцінки суб'єктивні й задумані як калібрувальні ручки, а не як істина.
 
 import type { Driver } from '../sim/types.ts';
+import { FICTIONAL_DRIVERS, useFictionalGrid } from './fictional.ts';
 
 export const DRIVERS_2026: Driver[] = [
   // ---- Mercedes ----
@@ -335,6 +336,18 @@ export const DRIVERS_2026: Driver[] = [
     aggression: 0.62,
   },
 ];
+
+// Публічна збірка (VITE_GRID=fictional) підміняє імена на вигадані —
+// id, номери, характеристики і збереження лишаються тими самими.
+if (useFictionalGrid()) {
+  for (const d of DRIVERS_2026) {
+    const f = FICTIONAL_DRIVERS[d.id];
+    if (f) {
+      d.name = f.name;
+      d.short = f.short;
+    }
+  }
+}
 
 export const DRIVER_BY_ID = new Map(DRIVERS_2026.map((d) => [d.id, d]));
 

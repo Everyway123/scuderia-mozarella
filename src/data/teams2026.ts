@@ -6,6 +6,7 @@
 // Регламент 2026 обнулив ієрархію, тож розклад — оцінка, а не факт.
 
 import type { Team } from '../sim/types.ts';
+import { FICTIONAL_TEAMS, useFictionalGrid } from './fictional.ts';
 
 export const TEAMS_2026: Team[] = [
   {
@@ -141,5 +142,17 @@ export const TEAMS_2026: Team[] = [
     strategy: 0.58,
   },
 ];
+
+// Публічна збірка (VITE_GRID=fictional) підміняє видимі назви на вигадані —
+// id, баланс і збереження лишаються тими самими. Див. fictional.ts.
+if (useFictionalGrid()) {
+  for (const t of TEAMS_2026) {
+    const f = FICTIONAL_TEAMS[t.id];
+    if (f) {
+      t.name = f.name;
+      t.short = f.short;
+    }
+  }
+}
 
 export const TEAM_BY_ID = new Map(TEAMS_2026.map((t) => [t.id, t]));

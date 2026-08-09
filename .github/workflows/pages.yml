@@ -26,7 +26,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Публічна збірка йде з вигаданим гридом: реальні назви команд і імена
+      # пілотів — чужі торгові марки, їм не місце на публічному хостингу
       - run: npm run build
+        env:
+          VITE_GRID: fictional
       - uses: actions/configure-pages@v5
         with:
           enablement: true

@@ -362,6 +362,28 @@ describe('фірмові траси (Monopoly: володіння гран-пр�
   });
 });
 
+describe('вигаданий грид для публічних збірок', () => {
+  it('мапи підмін покривають кожну команду й пілота, коди унікальні', async () => {
+    const { FICTIONAL_TEAMS, FICTIONAL_DRIVERS } = await import('../src/data/fictional.ts');
+
+    for (const t of TEAMS_2026) {
+      const f = FICTIONAL_TEAMS[t.id];
+      expect(f, `команда ${t.id} без вигаданої назви`).toBeTruthy();
+      // Вигадане ім'я не повторює реальне навіть частково
+      expect(f!.name.toLowerCase()).not.toContain(t.short.toLowerCase());
+    }
+    for (const d of DRIVERS_2026) {
+      expect(FICTIONAL_DRIVERS[d.id], `пілот ${d.id} без вигаданого імені`).toBeTruthy();
+    }
+
+    const shorts = [
+      ...Object.values(FICTIONAL_TEAMS).map((f) => f.short),
+      ...Object.values(FICTIONAL_DRIVERS).map((f) => f.short),
+    ];
+    expect(new Set(shorts).size, 'коди перетинаються').toBe(shorts.length);
+  });
+});
+
 describe('збереження', () => {
   it('сезон переживає запис і читання', () => {
     const s = newSeason('williams', 50, 123);
