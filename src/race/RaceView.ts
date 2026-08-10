@@ -336,9 +336,16 @@ export class RaceView {
       }
     }
 
-    // 2. Погода змінилась — не та гума коштує секунди на колі
+    // 2. Погода змінилась — не та гума коштує секунди на колі.
+    //    Питаємо ЛИШЕ якщо хтось справді на сліках: коли обидві машини вже
+    //    на інтері/дощовій (заїхали по радару), питання «міняємо гуму?» —
+    //    це знущання, а не рішення. Прапорець не ставимо, поки не спитали:
+    //    якщо гравець пізніше ризикне сліком у дощ — питання ще актуальне.
     const weatherKey = `w-${state.weather}`;
-    if (state.weather !== 'dry' && !this.firedPrompts.has(weatherKey)) {
+    const someoneOnSlicks = alive.some(
+      (c) => DRY_COMPOUNDS.includes(c.tyre.compound) && !c.pitRequest,
+    );
+    if (state.weather !== 'dry' && !this.firedPrompts.has(weatherKey) && someoneOnSlicks) {
       this.firedPrompts.add(weatherKey);
       this.ask({
         id: 'rain',
@@ -386,7 +393,10 @@ export class RaceView {
     // 4. Плановий заїзд на носі. Це єдиний момент рішення, який трапляється
     //    в КОЖНІЙ гонці — без нього чиста суха гонка виходила німою: один
     //    запит за весь етап, і гравець знову глядач.
+    //    У дощ підтвердження ПЛАНОВОГО (сухого!) заїзду — нонсенс: план
+    //    складався для сухої траси, а мокрою гумою керують погодні запити.
     for (const car of alive) {
+      if (state.weather !== 'dry') break;
       const advice = this.race.advice(car.driverId);
       if (!advice || !Number.isFinite(advice.nextPitLap)) continue;
       if (advice.nextPitLap - lap !== 1) continue;
