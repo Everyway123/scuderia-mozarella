@@ -13,6 +13,7 @@
 *без встановлення · безкоштовно · PWA: можна встановити на телефон і грати без інтернету*
 
 [![Deploy to GitHub Pages](https://github.com/Everyway123/scuderia-mozarella/actions/workflows/pages.yml/badge.svg)](https://github.com/Everyway123/scuderia-mozarella/actions/workflows/pages.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-57e3ff.svg)](LICENSE)
 
 ![Гонка: broadcast-екран із вежею часів, мінімапою і пітволом](docs/race.png)
 
@@ -317,3 +318,9 @@ src/data/trackShapes.ts   контури трас із описів поворо
 Наступний великий шмат — **ринок пілотів і контракти** поверх багатосезонної
 кар'єри. Розбір механік із **F1 Fantasy** і **Monopoly F1** — що перенесено
 і чому, а що відкинуто — у [DESIGN-BACKLOG.md](DESIGN-BACKLOG.md).
+
+## Ліцензія
+
+[MIT](LICENSE) — код вільний для будь-якого використання. Реальні назви команд
+і імена пілотів у `src/data/` — чужі торгові марки й персональні бренди, ліцензія
+на них не поширюється; публічна збірка тому використовує вигаданий грид.

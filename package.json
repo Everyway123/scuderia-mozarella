@@ -1,6 +1,7 @@
 {
   "name": "scuderia-mozarella",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "description": "SCUDERIA MOZARELLA — F1-менеджер у браузері, сезон 2026",
