@@ -154,6 +154,20 @@ test('E7: прискорення й «до фінішу» не ламають с
   expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
 });
 
+test('E13: пояснення гри відкривається з меню і повертає назад', async ({ page }) => {
+  const errors = await openApp(page);
+  await page.click('[data-test="rules"]');
+  await expect(page.locator('[data-test="rules-screen"]')).toBeVisible();
+  // Ключові розділи на місці: важелі, гума, радар, сезон
+  const text = await page.locator('[data-test="rules-screen"]').textContent();
+  for (const word of ['Темп', 'РАДАР', 'кліф', 'Сейфті', 'Ставка', 'Фірмові']) {
+    expect(text, `нема розділу про ${word}`).toContain(word);
+  }
+  await page.click('[data-test="rules-back"]');
+  await expect(page.locator('[data-test="menu"]')).toBeVisible();
+  expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
+});
+
 test('E12: межу пітволу можна тягати, і ширина запамʼятовується', async ({ page }) => {
   const errors = await openApp(page);
   await startSeasonRace(page, 'haas');
