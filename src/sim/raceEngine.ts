@@ -607,6 +607,14 @@ export class Race {
 
     // 7.5 Підсумки пітів — після пересортування, коли вже видно, куди виїхав:
     //     «хард, стоянка 2.31 · −22.4 с · P8→P11». Один погляд — уся ціна рішення.
+    const WHY_LABEL: Record<string, string> = {
+      'наказ': 'наказ',
+      planned: 'за планом',
+      'safety-car': 'вікно SC',
+      weather: 'погода',
+      cliff: 'кліф гуми',
+      rule: 'правило сумішей',
+    };
     for (const [driverId, o] of pitOutcome) {
       const car = s.cars.find((c) => c.driverId === driverId);
       if (!car || car.status === 'dnf') continue;
@@ -617,7 +625,7 @@ export class Race {
           : `P${o.posBefore}→P${car.position}`;
       this.log(
         'pit',
-        `${driver.short} [${o.why}]: ${COMPOUNDS[o.compound].label}, стоянка ${o.stationary.toFixed(2)} · −${o.cost.toFixed(1)} с · ${move}`,
+        `${driver.short} [${WHY_LABEL[o.why] ?? o.why}]: ${COMPOUNDS[o.compound].label}, стоянка ${o.stationary.toFixed(2)} · −${o.cost.toFixed(1)} с · ${move}`,
         driverId,
       );
     }
