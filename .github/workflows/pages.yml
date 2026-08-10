@@ -1,5 +1,10 @@
-# Автодеплой на GitHub Pages: кожен пуш у main збирає гру і викладає її
-# PWA-версією (працює офлайн після першого відкриття).
+# Автодеплой на GitHub Pages: кожен пуш у main збирає гру (вигаданий грид,
+# PWA, SEO) і кладе dist у гілку gh-pages — GitHub роздає її на
+# https://everyway123.github.io/scuderia-mozarella/
+#
+# Деплой через гілку, а не через actions/deploy-pages: створення Pages-сайту
+# через API вимагає прав, яких немає в GITHUB_TOKEN, а пуш gh-pages
+# автоматично вмикає і оновлює сайт без жодних налаштувань.
 name: Deploy to GitHub Pages
 
 on:
@@ -8,16 +13,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,19 +34,13 @@ jobs:
       - run: npm run build
         env:
           VITE_GRID: fictional
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - run: touch dist/.nojekyll
+      - name: Push dist to gh-pages
+        run: |
+          cd dist
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Deploy ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages

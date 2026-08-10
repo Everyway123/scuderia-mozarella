@@ -18,6 +18,21 @@
 
 </div>
 
+## In English
+
+**Scuderia Mozarella** is a free browser-based Formula 1 management game.
+Run a race weekend from the pit wall in five minutes: tyre strategy with real
+degradation cliffs, a weather radar the AI can't see (measured +2.3 positions
+per wet race), the 2026 hybrid rules with Override instead of DRS, and a
+24-race season with car development, bets and one-shot trump cards. Every
+finish comes with a strategy debrief that prices your decisions in seconds.
+Built on a lap-by-lap simulation in the spirit of academic race simulation —
+same physics for you and the AI, no rubber-banding.
+
+**[▶ Play now](https://everyway123.github.io/scuderia-mozarella/)** — no install,
+works offline as a PWA. Interface is currently in Ukrainian; the timing tower,
+track map and strategy levers read like any F1 broadcast.
+
 ## Чому в це затягує
 
 - **Це не клікер — це пітвол.** Симуляція по колах за схемою академічної

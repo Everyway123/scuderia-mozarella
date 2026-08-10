@@ -4,13 +4,84 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0d12" />
+
+    <!-- SEO: сторінка одна, аудиторія двомовна — опис укр + англ -->
+    <title>SCUDERIA MOZARELLA — F1-менеджер у браузері · F1 Manager Game in Your Browser</title>
+    <meta
+      name="description"
+      content="Безкоштовний F1-менеджер у браузері: гоночний вікенд із пітволу за 5 хвилин. Сезон-2026, радар погоди, знос гуми, стратегія піт-стопів. Працює офлайн. — Free browser F1 manager game: run a race weekend from the pit wall in 5 minutes. 2026 season, weather radar, tyre wear, pit strategy. Works offline (PWA)."
+    />
+    <meta
+      name="keywords"
+      content="f1 manager, formula 1 game, браузерна гра, ф1 менеджер, гра формула 1, racing strategy game, pit wall, безкоштовна гра, browser game, pwa game, offline game"
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://everyway123.github.io/scuderia-mozarella/" />
+
+    <!-- Open Graph / Twitter -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SCUDERIA MOZARELLA" />
+    <meta property="og:title" content="SCUDERIA MOZARELLA — F1 manager in your browser" />
+    <meta
+      property="og:description"
+      content="Run a Formula 1 race weekend from the pit wall in 5 minutes. 2026 season, weather radar, live tyre wear, post-race strategy debrief. Free, offline-capable, no install. Українською."
+    />
+    <meta property="og:url" content="https://everyway123.github.io/scuderia-mozarella/" />
+    <meta property="og:image" content="https://everyway123.github.io/scuderia-mozarella/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="uk_UA" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SCUDERIA MOZARELLA — F1 manager in your browser" />
+    <meta
+      name="twitter:description"
+      content="Pit wall strategy game: 2026 season, weather radar, tyre wear, 24 tracks. Free · offline · Українською."
+    />
+    <meta name="twitter:image" content="https://everyway123.github.io/scuderia-mozarella/og.png" />
+
+    <!-- Структуровані дані для пошуковиків -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "SCUDERIA MOZARELLA",
+        "alternateName": "Scuderia Mozarella — F1 Manager 2026",
+        "url": "https://everyway123.github.io/scuderia-mozarella/",
+        "image": "https://everyway123.github.io/scuderia-mozarella/og.png",
+        "description": "Free browser-based Formula 1 management game. Run a race weekend from the pit wall in five minutes: tyre strategy, weather radar, 2026 hybrid rules, a 24-race season with car development. Works offline as a PWA. Interface in Ukrainian.",
+        "inLanguage": ["uk", "en"],
+        "genre": ["Sports", "Strategy", "Management", "Racing"],
+        "gamePlatform": "Web Browser",
+        "operatingSystem": "Any",
+        "applicationCategory": "Game",
+        "playMode": "SinglePlayer",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
+
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon-192.png" />
     <link rel="apple-touch-icon" href="icon-192.png" />
-    <title>SCUDERIA MOZARELLA — F1-менеджер 2026</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- Видимий текст до старту JS: і фолбек, і контент для пошуковиків -->
+      <noscript>
+        <h1>SCUDERIA MOZARELLA — F1-менеджер у браузері / F1 manager in your browser</h1>
+        <p>
+          Гоночний вікенд із пітволу за п'ять хвилин: стратегія піт-стопів, радар погоди,
+          знос гуми, сезон-2026 з 24 трасами. Безкоштовно, працює офлайн. Для гри потрібен
+          увімкнений JavaScript.
+        </p>
+        <p>
+          Run a Formula 1 race weekend from the pit wall in five minutes: pit strategy,
+          weather radar, tyre wear, a 24-race 2026 season. Free and offline-capable.
+          JavaScript is required to play.
+        </p>
+      </noscript>
+    </div>
     <script type="module" src="/src/main.ts"></script>
     <script>
       // Офлайн: після першого відкриття гра живе без мережі (PWA).
