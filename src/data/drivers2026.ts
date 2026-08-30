@@ -19,6 +19,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.85,
     defending: 0.86,
     wet: 0.88,
+    age: 27,
     aggression: 0.7,
   },
   {
@@ -33,6 +34,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.78,
     defending: 0.7,
     wet: 0.75,
+    age: 19,
     aggression: 0.82,
   },
 
@@ -49,6 +51,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.86,
     defending: 0.84,
     wet: 0.9,
+    age: 26,
     aggression: 0.72,
   },
   {
@@ -63,6 +66,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.88,
     defending: 0.9,
     wet: 0.82,
+    age: 24,
     aggression: 0.74,
   },
 
@@ -79,6 +83,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.97,
     defending: 0.96,
     wet: 0.98,
+    age: 28,
     aggression: 0.85,
   },
   {
@@ -93,6 +98,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.78,
     defending: 0.74,
     wet: 0.74,
+    age: 21,
     aggression: 0.8,
   },
 
@@ -109,6 +115,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.88,
     defending: 0.88,
     wet: 0.88,
+    age: 28,
     aggression: 0.82,
   },
   {
@@ -123,6 +130,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.94,
     defending: 0.92,
     wet: 0.96,
+    age: 41,
     aggression: 0.76,
   },
 
@@ -139,6 +147,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.86,
     defending: 0.88,
     wet: 0.82,
+    age: 31,
     aggression: 0.72,
   },
   {
@@ -153,6 +162,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.8,
     defending: 0.86,
     wet: 0.78,
+    age: 29,
     aggression: 0.66,
   },
 
@@ -169,6 +179,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.94,
     defending: 0.97,
     wet: 0.94,
+    age: 44,
     aggression: 0.88,
   },
   {
@@ -183,6 +194,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.6,
     defending: 0.68,
     wet: 0.6,
+    age: 27,
     aggression: 0.6,
   },
 
@@ -199,6 +211,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.8,
     defending: 0.76,
     wet: 0.74,
+    age: 24,
     aggression: 0.84,
   },
   {
@@ -213,6 +226,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.7,
     defending: 0.64,
     wet: 0.62,
+    age: 18,
     aggression: 0.86,
   },
 
@@ -229,6 +243,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.8,
     defending: 0.84,
     wet: 0.9,
+    age: 38,
     aggression: 0.68,
   },
   {
@@ -243,6 +258,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.74,
     defending: 0.72,
     wet: 0.7,
+    age: 21,
     aggression: 0.78,
   },
 
@@ -259,6 +275,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.82,
     defending: 0.8,
     wet: 0.8,
+    age: 30,
     aggression: 0.76,
   },
   {
@@ -273,6 +290,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.74,
     defending: 0.68,
     wet: 0.68,
+    age: 22,
     aggression: 0.88,
   },
 
@@ -289,6 +307,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.76,
     defending: 0.84,
     wet: 0.76,
+    age: 29,
     aggression: 0.72,
   },
   {
@@ -303,6 +322,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.8,
     defending: 0.74,
     wet: 0.76,
+    age: 20,
     aggression: 0.82,
   },
 
@@ -319,6 +339,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.82,
     defending: 0.86,
     wet: 0.78,
+    age: 36,
     aggression: 0.7,
   },
   {
@@ -333,6 +354,7 @@ export const DRIVERS_2026: Driver[] = [
     overtaking: 0.74,
     defending: 0.8,
     wet: 0.8,
+    age: 36,
     aggression: 0.62,
   },
 ];

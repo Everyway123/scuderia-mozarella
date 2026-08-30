@@ -63,6 +63,8 @@ export interface Driver {
   wet: number;
   /** 0..1 — схильність ризикувати: більше обгонів, більше помилок. */
   aggression: number;
+  /** Вік на старт сезону 2026 — база для кар'єрного дрейфу форми. */
+  age: number;
 }
 
 export interface Track {

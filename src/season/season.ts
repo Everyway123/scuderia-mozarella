@@ -4,15 +4,22 @@
 // (склад команд із урахуванням розробки) і приймає її результат.
 
 import { DRIVERS_2026, driversOfTeam } from '../data/drivers2026.ts';
+import {
+  emptyMarket,
+  marketDrivers,
+  marketDriversOfTeam,
+  teamOf,
+  type MarketState,
+} from './market.ts';
 import { TEAMS_2026 } from '../data/teams2026.ts';
 import { TRACKS_2026 } from '../data/tracks2026.ts';
 import type { ClassifiedCar } from '../sim/raceEngine.ts';
 import { Rng } from '../sim/rng.ts';
-import type { RaceLength, Team } from '../sim/types.ts';
+import type { Driver, RaceLength, Team } from '../sim/types.ts';
 import { isPureUpgrade, OFFER_SIZE, PART_BY_ID, PARTS } from './parts.ts';
 
 export const SAVE_KEY = 'scuderiaMozarellaSeason1';
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 
 export type ChipId = 'triple' | 'rebuild' | 'doubleRp';
 
@@ -86,10 +93,17 @@ export interface SeasonState {
   /** Траси, де команда вигравала — там вона почувається як удома. */
   homeTracks: string[];
   history: RaceRecord[];
+  /** Ринок пілотів: трансфери, дрейф форми, номер сезону кар'єри. */
+  market: MarketState;
 }
 
-export function newSeason(teamId: string, length: RaceLength, seed: number): SeasonState {
-  const first = driversOfTeam(teamId)[0]?.id ?? null;
+export function newSeason(
+  teamId: string,
+  length: RaceLength,
+  seed: number,
+  market: MarketState = emptyMarket(),
+): SeasonState {
+  const first = marketDriversOfTeam(market, teamId)[0]?.id ?? driversOfTeam(teamId)[0]?.id ?? null;
   return {
     version: SAVE_VERSION,
     teamId,
@@ -106,7 +120,19 @@ export function newSeason(teamId: string, length: RaceLength, seed: number): Sea
     armedChip: null,
     homeTracks: [],
     history: [],
+    market,
   };
+}
+
+// ---- Пілоти сезону (з урахуванням ринку) -------------------------------
+
+/** Пілоти цього сезону: трансфери, дрейф форми, актуальний вік. */
+export function seasonDrivers(state: SeasonState): Driver[] {
+  return marketDrivers(state.market);
+}
+
+export function seasonDriversOfTeam(state: SeasonState, teamId: string): Driver[] {
+  return marketDriversOfTeam(state.market, teamId);
 }
 
 // ---- Розробка ---------------------------------------------------------
@@ -332,13 +358,14 @@ export interface StandingRow {
 
 export function driverStandings(state: SeasonState): StandingRow[] {
   return DRIVERS_2026.map((d) => {
-    const team = TEAMS_2026.find((t) => t.id === d.teamId)!;
+    const teamId = teamOf(state.market, d.id);
+    const team = TEAMS_2026.find((t) => t.id === teamId)!;
     return {
       id: d.id,
       name: d.name,
       color: team.color,
       points: state.driverPoints[d.id] ?? 0,
-      isPlayer: d.teamId === state.teamId,
+      isPlayer: teamId === state.teamId,
     };
   }).sort((a, b) => b.points - a.points);
 }
@@ -386,6 +413,7 @@ export function load(): SeasonState | null {
     if (parsed.version !== SAVE_VERSION) return null;
     if (!parsed.teamId || typeof parsed.round !== 'number') return null;
     if (!Array.isArray(parsed.parts)) return null;
+    if (!parsed.market || typeof parsed.market.seasonsPlayed !== 'number') return null;
     return parsed;
   } catch {
     return null;

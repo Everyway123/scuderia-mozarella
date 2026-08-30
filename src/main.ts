@@ -10,6 +10,13 @@ import { TRACKS_2026, TRACK_BY_ID } from './data/tracks2026.ts';
 import { RaceView } from './race/RaceView.ts';
 import { PART_BY_ID } from './season/parts.ts';
 import {
+  applyOffseason,
+  canSign,
+  freeAgents,
+  minConstructorRank,
+  signingCost,
+} from './season/market.ts';
+import {
   CHIPS,
   canUseChip,
   clearSave,
@@ -23,6 +30,8 @@ import {
   raceSeed,
   recordRace,
   save,
+  seasonDrivers,
+  seasonDriversOfTeam,
   teamsForRound,
   teamStandings,
   useChip,
@@ -249,7 +258,7 @@ function showHub(): void {
 
   const track = currentTrack(s);
   const team = TEAMS_2026.find((t) => t.id === s.teamId)!;
-  const mine = driversOfTeam(s.teamId);
+  const mine = seasonDriversOfTeam(s, s.teamId);
   const tStand = teamStandings(s);
   const myPos = tStand.findIndex((r) => r.id === s.teamId) + 1;
   const offers = offersFor(s);
@@ -404,6 +413,16 @@ function showSeasonEnd(): void {
   const dStand = driverStandings(s);
   const pos = tStand.findIndex((r) => r.id === s.teamId) + 1;
   const champion = dStand[0]!;
+
+  // Ринок міжсезоння: вільні агенти, ціни, ранги темпу
+  const roster = seasonDrivers(s);
+  const myDrivers = seasonDriversOfTeam(s, s.teamId);
+  const carryRp = Math.min(s.rp, 10);
+  const rpAvail = carryRp + 8;
+  const free = freeAgents(s.market, s.seed, s.teamId);
+  const paceRank = new Map(
+    [...roster].sort((a, b) => a.pace - b.pace).map((d, i) => [d.id, i + 1]),
+  );
   const myBest = Math.min(...s.history.map((r) => r.bestPosition || 99));
   const totalPoints = s.history.reduce((a, r) => a + r.pointsScored, 0);
   const totalRp = s.history.reduce((a, r) => a + r.rpGained, 0);
@@ -447,24 +466,115 @@ function showSeasonEnd(): void {
         </div>
       </div>
 
+      <h3 class="finale-h">🤝 Міжсезоння · ринок пілотів</h3>
+      <p class="hint">Можеш підписати <b>одного</b> вільного агента замість одного зі своїх —
+      простий обмін місцями. Ціна платиться з RP наступного сезону
+      (доступно <b>${rpAvail}</b>: ${carryRp} перенесених + 8 стартових). Зірки не йдуть
+      у хвіст пелотона. Кого не візьмеш — розбере пелотон.</p>
+
+      <div class="market" data-test="market">
+        <div class="market-col">
+          <h4>Вільні агенти</h4>
+          ${free
+            .map((id) => {
+              const d = roster.find((x) => x.id === id)!;
+              const cost = signingCost(s.market, id);
+              const check = canSign(s.market, id, pos, rpAvail);
+              const rank = paceRank.get(id)!;
+              const req = minConstructorRank(s.market, id);
+              return `<button class="market-opt" data-hire="${id}" ${check.ok ? '' : 'disabled'}>
+                <b>${esc(d.name)}</b>
+                <span>${d.age} р. · ${rank}-й темп грида · <b>${cost} RP</b>${req ? ` · вимагає топ-${req}` : ''}</span>
+                ${check.ok ? '' : `<i>${esc(check.reason ?? '')}</i>`}
+              </button>`;
+            })
+            .join('')}
+        </div>
+        <div class="market-col">
+          <h4>Кого замінити</h4>
+          ${myDrivers
+            .map(
+              (d) => `<button class="market-opt" data-replace="${d.id}">
+                <b>${esc(d.name)}</b>
+                <span>${d.age} р. · ${paceRank.get(d.id)}-й темп грида</span>
+              </button>`,
+            )
+            .join('')}
+        </div>
+      </div>
+
       <div class="finale-actions">
-        <button class="btn primary big" data-test="restart-carry">Новий сезон — з фірмовими трасами</button>
+        <button class="btn primary big" data-test="sign-and-go" disabled>Підписати й у новий сезон</button>
+        <button class="btn big" data-test="restart-carry">Без підписів — новий сезон</button>
         <button class="btn" data-test="restart">Почати з чистого аркуша</button>
       </div>
     </div>`;
 
-  // Кар'єра: фірмові траси — це пам'ять, яку сезон передає наступному
-  app.querySelector('[data-test="restart-carry"]')!.addEventListener('click', () => {
-    const next = newSeason(s.teamId, s.length, Math.floor(Math.random() * 1e6) + 1);
+  let hireId: string | null = null;
+  let replaceId: string | null = null;
+  const signBtn = app.querySelector<HTMLButtonElement>('[data-test="sign-and-go"]')!;
+  const refreshSign = () => {
+    signBtn.disabled = !(hireId && replaceId);
+    signBtn.textContent =
+      hireId && replaceId
+        ? `Підписати за ${signingCost(s.market, hireId)} RP й у новий сезон`
+        : 'Підписати й у новий сезон';
+  };
+  for (const btn of app.querySelectorAll<HTMLButtonElement>('[data-hire]')) {
+    btn.addEventListener('click', () => {
+      hireId = btn.dataset.hire!;
+      app.querySelectorAll('[data-hire]').forEach((b) => b.classList.toggle('on', b === btn));
+      refreshSign();
+    });
+  }
+  for (const btn of app.querySelectorAll<HTMLButtonElement>('[data-replace]')) {
+    btn.addEventListener('click', () => {
+      replaceId = btn.dataset.replace!;
+      app.querySelectorAll('[data-replace]').forEach((b) => b.classList.toggle('on', b === btn));
+      refreshSign();
+    });
+  }
+
+  const nameOf = (id: string) => roster.find((d) => d.id === id)?.name ?? id;
+
+  // Кар'єра: наступний сезон успадковує фірмові траси, ринок і залишок RP
+  const startNextSeason = (signing: { hireId: string; replaceId: string } | null) => {
+    const off = applyOffseason(s.market, s.seed, s.teamId, signing, nameOf);
+    const spent = signing ? signingCost(s.market, signing.hireId) : 0;
+    const next = newSeason(s.teamId, s.length, Math.floor(Math.random() * 1e6) + 1, off.market);
     next.homeTracks = [...s.homeTracks];
+    next.rp = rpAvail - spent;
     season = next;
     save(next);
-    showHub();
+    showOffseasonNews(off.news);
+  };
+
+  signBtn.addEventListener('click', () => {
+    if (hireId && replaceId) startNextSeason({ hireId, replaceId });
+  });
+  app.querySelector('[data-test="restart-carry"]')!.addEventListener('click', () => {
+    startNextSeason(null);
   });
   app.querySelector('[data-test="restart"]')!.addEventListener('click', () => {
     clearSave();
     showMenu();
   });
+}
+
+/** Стрічка міжсезоння: трансфери й форма — щоб грид відчувався живим. */
+function showOffseasonNews(news: string[]): void {
+  clearView();
+  app.innerHTML = `
+    <div class="setup" data-test="offseason">
+      <h1>📰 Міжсезоння</h1>
+      ${
+        news.length > 0
+          ? `<ul class="offseason-news">${news.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`
+          : '<p class="sub">Тихе міжсезоння: всі лишились на своїх місцях.</p>'
+      }
+      <button class="btn primary big" data-test="offseason-go">До штабу нового сезону</button>
+    </div>`;
+  app.querySelector('[data-test="offseason-go"]')!.addEventListener('click', showHub);
 }
 
 // --------------------------------------------------------------- КВАЛА
@@ -481,8 +591,9 @@ function showQuali(): void {
   const teams = teamsForRound(s);
   const teamMap = new Map(teams.map((t) => [t.id, t]));
   const seed = raceSeed(s);
-  const quali = runQualifying(track, DRIVERS_2026, teamMap, new Rng(seed ^ 0x51ed));
-  const mine = driversOfTeam(s.teamId).map((d) => d.id);
+  const roster = seasonDrivers(s);
+  const quali = runQualifying(track, roster, teamMap, new Rng(seed ^ 0x51ed));
+  const mine = seasonDriversOfTeam(s, s.teamId).map((d) => d.id);
 
   const render = () => {
     app.innerHTML = `
@@ -495,7 +606,7 @@ function showQuali(): void {
             ${quali
               .slice(0, 22)
               .map((q: QualiResult, i) => {
-                const d = DRIVERS_2026.find((x) => x.id === q.driverId)!;
+                const d = roster.find((x) => x.id === q.driverId)!;
                 const t = teamMap.get(d.teamId)!;
                 const isMine = mine.includes(q.driverId);
                 return `<tr class="${isMine ? 'mine' : ''}">
@@ -512,7 +623,7 @@ function showQuali(): void {
         <div class="field">
           <span>Лідер етапу</span>
           <div class="bet" data-test="bet-quali">
-            ${driversOfTeam(s.teamId)
+            ${seasonDriversOfTeam(s, s.teamId)
               .map((d) => {
                 const gridPos = quali.findIndex((q) => q.driverId === d.id) + 1;
                 return `<button class="bet-opt${s.nomination === d.id ? ' on' : ''}"
@@ -555,16 +666,18 @@ function startRace(
   grid?: string[],
 ): void {
   const track = TRACK_BY_ID.get(trackId)!;
+  // У сезоні склад пілотів живий: трансфери й дрейф форми з ринку
+  const drivers = seasonState ? seasonDrivers(seasonState) : DRIVERS_2026;
   let startGrid = grid;
   if (!startGrid) {
     const teamMap = new Map(teams.map((t) => [t.id, t]));
-    startGrid = gridFromQuali(runQualifying(track, DRIVERS_2026, teamMap, new Rng(seed ^ 0x51ed)));
+    startGrid = gridFromQuali(runQualifying(track, drivers, teamMap, new Rng(seed ^ 0x51ed)));
   }
 
   clearView();
   view = new RaceView(app, {
     track,
-    drivers: DRIVERS_2026,
+    drivers,
     teams,
     length,
     seed,

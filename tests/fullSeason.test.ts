@@ -8,7 +8,8 @@
 // щоб усі сезонні механіки прожили разом цілий чемпіонат, а не по одній.
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { DRIVERS_2026, driversOfTeam } from '../src/data/drivers2026.ts';
+import { DRIVERS_2026 } from '../src/data/drivers2026.ts';
+import { applyOffseason, canSign, freeAgents } from '../src/season/market.ts';
 import { TEAMS_2026 } from '../src/data/teams2026.ts';
 import { TRACKS_2026 } from '../src/data/tracks2026.ts';
 import { PART_BY_ID } from '../src/season/parts.ts';
@@ -21,6 +22,9 @@ import {
   raceSeed,
   recordRace,
   save,
+  seasonDrivers,
+  seasonDriversOfTeam,
+  driverStandings,
   spentRp,
   teamsForRound,
   useChip,
@@ -63,10 +67,12 @@ function playRound(s: SeasonState): void {
   const teams = teamsForRound(s);
   const teamMap = new Map(teams.map((t) => [t.id, t]));
   const seed = raceSeed(s);
-  const quali = runQualifying(track, DRIVERS_2026, teamMap, new Rng(seed ^ 0x51ed));
+  // Склад пілотів — через ринок: у кар'єрі трансфери й форма вже в грі
+  const roster = seasonDrivers(s);
+  const quali = runQualifying(track, roster, teamMap, new Rng(seed ^ 0x51ed));
 
   // Final Fix: після квали ставимо на того свого пілота, хто вище на решітці
-  const mine = driversOfTeam(s.teamId).map((d) => d.id);
+  const mine = seasonDriversOfTeam(s, s.teamId).map((d) => d.id);
   const better = quali.find((q) => mine.includes(q.driverId));
   if (better && s.nomination !== better.driverId) {
     s.nomination = better.driverId;
@@ -75,7 +81,7 @@ function playRound(s: SeasonState): void {
 
   const race = new Race({
     track,
-    drivers: DRIVERS_2026,
+    drivers: roster,
     teams,
     length: s.length,
     seed,
@@ -119,7 +125,7 @@ describe('P5: повний сезон 24 етапи', () => {
 
   it('залік узгоджений: команда = сума своїх пілотів, і жодного мінуса', () => {
     for (const team of TEAMS_2026) {
-      const fromDrivers = driversOfTeam(team.id).reduce(
+      const fromDrivers = seasonDriversOfTeam(s, team.id).reduce(
         (a, d) => a + (s.driverPoints[d.id] ?? 0),
         0,
       );
@@ -186,5 +192,37 @@ describe('P5: повний сезон 24 етапи', () => {
     expect(replay.history.map((r) => r.podium.join())).toEqual(
       s.history.map((r) => r.podium.join()),
     );
+  });
+});
+
+describe('кар\'єра: другий сезон із трансфером', () => {
+  it('підпис доїжджає до складу, гонок і заліку нового сезону', () => {
+    // Сезон 1 — швидко до фіналу
+    const s1 = newSeason('haas', 25, 555);
+    while (!isSeasonOver(s1)) playRound(s1);
+
+    // Міжсезоння: беремо найдорожчого доступного вільного агента замість Окона
+    const free = freeAgents(s1.market, s1.seed, 'haas');
+    const hireId = free.find((id) => canSign(s1.market, id, 11, 18).ok) ?? free[free.length - 1]!;
+    const off = applyOffseason(s1.market, s1.seed, 'haas', { hireId, replaceId: 'ocon' });
+
+    const s2 = newSeason('haas', 25, 777, off.market);
+    s2.homeTracks = [...s1.homeTracks];
+
+    // Склад нового сезону: найнятий у нас, Окон — у його старій команді
+    const mine = seasonDriversOfTeam(s2, 'haas').map((d) => d.id);
+    expect(mine).toContain(hireId);
+    expect(mine).not.toContain('ocon');
+    expect(s2.nomination === null || mine.includes(s2.nomination)).toBe(true);
+
+    // Три етапи другого сезону: гонки їдуть, очки пишуться новому пілоту
+    for (let i = 0; i < 3; i++) playRound(s2);
+    expect(s2.round).toBe(4);
+    const hiredRow = driverStandings(s2).find((r) => r.id === hireId)!;
+    expect(hiredRow.isPlayer).toBe(true);
+
+    // Вік і форма справді інші, ніж у базових даних
+    const aged = seasonDrivers(s2).find((d) => d.id === 'hamilton')!;
+    expect(aged.age).toBe(DRIVERS_2026.find((d) => d.id === 'hamilton')!.age + 1);
   });
 });

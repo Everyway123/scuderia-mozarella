@@ -174,3 +174,68 @@ test('E1b: швидка гонка не чіпає збереження сезо
 
   await expect(page.locator('[data-test="continue"]')).toContainText('етап 1/24');
 });
+
+test('E14: ринок пілотів — підпис у міжсезонні доїжджає до нового сезону', async ({ page }) => {
+  const errors = await openApp(page);
+
+  // Інжектимо завершений сезон: 24 етапи позаду, команда — чемпіон (ранг 1),
+  // 10 невитрачених RP — усі вільні агенти мають бути доступні для підпису
+  await page.evaluate(() => {
+    localStorage.setItem(
+      'scuderiaMozarellaSeason1',
+      JSON.stringify({
+        version: 3,
+        teamId: 'haas',
+        round: 25,
+        length: 25,
+        seed: 4242,
+        driverPoints: { ocon: 200, bearman: 150 },
+        teamPoints: { haas: 350, mercedes: 300 },
+        rp: 10,
+        parts: [],
+        nomination: 'ocon',
+        betFixed: false,
+        chipsUsed: [],
+        armedChip: null,
+        homeTracks: ['spa'],
+        history: [
+          { round: 1, trackId: 'melbourne', podium: ['ocon', 'russell', 'norris'], bestPosition: 1, pointsScored: 25, rpGained: 12, betPaid: true },
+        ],
+        market: { assignments: {}, paceDrift: {}, seasonsPlayed: 0 },
+      }),
+    );
+  });
+  await page.reload();
+  await page.click('[data-test="continue"]');
+  await expect(page.locator('[data-test="season-end"]')).toBeVisible();
+  await expect(page.locator('[data-test="market"]')).toBeVisible();
+
+  // Обираємо першого доступного вільного агента і кого замінити
+  const hireBtn = page.locator('[data-hire]:not([disabled])').first();
+  const hireId = await hireBtn.getAttribute('data-hire');
+  await hireBtn.click();
+  await page.locator('[data-replace="ocon"]').click();
+
+  const signBtn = page.locator('[data-test="sign-and-go"]');
+  await expect(signBtn).toBeEnabled();
+  await signBtn.click();
+
+  // Стрічка міжсезоння → штаб нового сезону
+  await expect(page.locator('[data-test="offseason"]')).toBeVisible();
+  await page.click('[data-test="offseason-go"]');
+  await expect(page.locator('[data-test="hub"]')).toBeVisible();
+
+  // Підпис справді в збереженому стані нового сезону
+  const state = await page.evaluate(() => {
+    const w = window as unknown as { __season: () => { market: { assignments: Record<string, string>; seasonsPlayed: number }; rp: number; round: number; homeTracks: string[] } | null };
+    return w.__season();
+  });
+  expect(state!.round).toBe(1);
+  expect(state!.market.seasonsPlayed).toBe(1);
+  expect(state!.market.assignments[hireId!]).toBe('haas');
+  expect(state!.market.assignments['ocon']).not.toBe(undefined);
+  expect(state!.homeTracks).toContain('spa');
+  expect(state!.rp).toBeLessThan(18); // ціна підпису справді списана
+
+  expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
+});
