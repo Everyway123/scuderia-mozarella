@@ -10,7 +10,9 @@ import {
   effectivePace,
   emptyMarket,
   freeAgents,
+  isRegulationSeason,
   marketDrivers,
+  marketTeams,
   minConstructorRank,
   signingCost,
   teamOf,
@@ -144,5 +146,62 @@ describe('міжсезоння', () => {
     }
     expect(youngSum / seeds.length).toBeLessThan(-0.04);
     expect(vetSum / seeds.length).toBeGreaterThan(0.06);
+  });
+});
+
+describe('епохи команд', () => {
+  it('дрейф детермінований від (seed, seasonsPlayed)', () => {
+    const m = emptyMarket();
+    const a = applyOffseason(m, 77, 'haas', null).market;
+    const b = applyOffseason(m, 77, 'haas', null).market;
+    expect(a.teamDrift).toEqual(b.teamDrift);
+    // І він узагалі є: хоч одна команда зрушила
+    expect(Object.values(a.teamDrift).some((v) => v !== 0)).toBe(true);
+  });
+
+  it('дрейф обмежений, а ефективний темп команд ніколи не від\'ємний', () => {
+    let m = emptyMarket();
+    for (let i = 0; i < 15; i++) m = applyOffseason(m, 5, 'haas', null).market;
+    for (const t of TEAMS_2026) {
+      const drift = m.teamDrift[t.id] ?? 0;
+      expect(drift).toBeGreaterThanOrEqual(-0.5);
+      expect(drift).toBeLessThanOrEqual(0.6);
+    }
+    for (const t of marketTeams(m)) expect(t.pace).toBeGreaterThanOrEqual(0);
+  });
+
+  it('регламентний сезон трусить грид сильніше за звичайний', () => {
+    // Порівнюємо середній |крок| у міжсезоння перед 3-м сезоном (регламент)
+    // і перед 2-м (звичайне) — по багатьох seed, бо окремий крок стохастичний
+    let regSum = 0;
+    let normSum = 0;
+    const seeds = Array.from({ length: 30 }, (_, i) => i * 7 + 3);
+    for (const seed of seeds) {
+      const m1 = applyOffseason(emptyMarket(), seed, 'haas', null).market; // → сезон 2
+      const m2 = applyOffseason(m1, seed, 'haas', null).market; // → сезон 3
+      const m3 = applyOffseason(m2, seed, 'haas', null).market; // → сезон 4, перший за новим регламентом
+      expect(isRegulationSeason(m2.seasonsPlayed)).toBe(false);
+      expect(isRegulationSeason(m3.seasonsPlayed)).toBe(true);
+      for (const t of TEAMS_2026) {
+        normSum += Math.abs((m2.teamDrift[t.id] ?? 0) - (m1.teamDrift[t.id] ?? 0));
+        regSum += Math.abs((m3.teamDrift[t.id] ?? 0) - (m2.teamDrift[t.id] ?? 0));
+      }
+    }
+    expect(regSum / seeds.length).toBeGreaterThan(normSum / seeds.length);
+  });
+
+  it('ієрархія грида з часом справді перетасовується', () => {
+    // Через 9 сезонів (3 цикли регламенту) лідер грида має мінятись
+    // у помітній частці всесвітів — інакше «епохи» декоративні
+    const baseline = [...TEAMS_2026].sort((a, b) => a.pace - b.pace)[0]!.id;
+    let changed = 0;
+    const seeds = Array.from({ length: 20 }, (_, i) => i * 31 + 11);
+    for (const seed of seeds) {
+      let m = emptyMarket();
+      for (let i = 0; i < 9; i++) m = applyOffseason(m, seed, 'haas', null).market;
+      const leader = [...marketTeams(m)].sort((a, b) => a.pace - b.pace)[0]!.id;
+      if (leader !== baseline) changed++;
+    }
+    expect(changed).toBeGreaterThanOrEqual(4); // ≥20% всесвітів
   });
 });

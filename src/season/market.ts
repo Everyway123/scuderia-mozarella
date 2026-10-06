@@ -8,7 +8,8 @@
 // перезавантаження не перетасує ринок.
 
 import { DRIVERS_2026 } from '../data/drivers2026.ts';
-import type { Driver } from '../sim/types.ts';
+import { TEAMS_2026 } from '../data/teams2026.ts';
+import type { Driver, Team } from '../sim/types.ts';
 import { Rng } from '../sim/rng.ts';
 
 export interface MarketState {
@@ -16,12 +17,18 @@ export interface MarketState {
   assignments: Record<string, string>;
   /** Накопичений дрейф темпу відносно бази, с/коло. Мінус — швидше. */
   paceDrift: Record<string, number>;
+  /**
+   * Епохи команд: накопичений дрейф темпу БОЛІДІВ відносно бази 2026,
+   * с/коло. Мінус — швидше. Без нього ієрархія грида вічна, і кар'єра
+   * впирається у стелю: аутсайдера неможливо вивести в чемпіони.
+   */
+  teamDrift: Record<string, number>;
   /** Скільки повних сезонів уже позаду (0 — граємо 2026-й). */
   seasonsPlayed: number;
 }
 
 export function emptyMarket(): MarketState {
-  return { assignments: {}, paceDrift: {}, seasonsPlayed: 0 };
+  return { assignments: {}, paceDrift: {}, teamDrift: {}, seasonsPlayed: 0 };
 }
 
 /** Команда пілота з урахуванням трансферів. */
@@ -44,6 +51,25 @@ export function marketDrivers(market: MarketState): Driver[] {
 
 export function marketDriversOfTeam(market: MarketState, teamId: string): Driver[] {
   return marketDrivers(market).filter((d) => d.teamId === teamId);
+}
+
+/**
+ * Команди з урахуванням епох: база 2026 + накопичений дрейф болідів.
+ * Це те, що сезон подає в гонку замість сирих TEAMS_2026.
+ */
+export function marketTeams(market: MarketState): Team[] {
+  return TEAMS_2026.map((t) => ({
+    ...t,
+    pace: Math.max(0, t.pace + (market.teamDrift?.[t.id] ?? 0)),
+  }));
+}
+
+/** На скільки сезонів припадає один цикл технічного регламенту. */
+export const REGULATION_CYCLE = 3;
+
+/** Чи буде сезон після цього міжсезоння першим за новим регламентом. */
+export function isRegulationSeason(seasonsPlayed: number): boolean {
+  return seasonsPlayed > 0 && seasonsPlayed % REGULATION_CYCLE === 0;
 }
 
 /** Ефективний темп пілота (база + дрейф) — основа ціни. */
@@ -137,6 +163,7 @@ export function applyOffseason(
   const next: MarketState = {
     assignments: { ...market.assignments },
     paceDrift: { ...market.paceDrift },
+    teamDrift: { ...(market.teamDrift ?? {}) },
     seasonsPlayed: market.seasonsPlayed + 1,
   };
   const news: string[] = [];
@@ -186,6 +213,35 @@ export function applyOffseason(
   const fader = moved[moved.length - 1]!;
   if (riser.delta < -0.02) news.push(`📈 ${driverName(riser.id)} додає — форма росте.`);
   if (fader.delta > 0.02) news.push(`📉 ${driverName(fader.id)} вже не той — роки беруть своє.`);
+
+  // 5. Епохи команд: боліди теж живуть. Щосезону темп дрейфує з м'яким
+  //    притяганням до середини грида (чемпіон розслабляється, аутсайдер
+  //    наздоганяє), а кожен REGULATION_CYCLE-й сезон — новий технічний
+  //    регламент: кроки різко більші, ієрархія перетасовується.
+  //    Саме це робить кар'єру довгою грою: вічних чемпіонів більше немає.
+  //    Кроки рахуються ПІСЛЯ всіх попередніх draw'ів — щоб додавання епох
+  //    не зсунуло детермінований ринок пілотів у старих кар'єрах.
+  const regulation = isRegulationSeason(next.seasonsPlayed);
+  if (regulation) {
+    news.push('🏭 Новий технічний регламент! Боліди малюють з нуля — ієрархія грида під питанням.');
+  }
+  const teamSteps: { id: string; step: number }[] = [];
+  for (const t of TEAMS_2026) {
+    const current = t.pace + (next.teamDrift[t.id] ?? 0);
+    // Притягання до середини грида: хто попереду еталона середняка — здає,
+    // хто позаду — підтягується. У регламентний сезон усе втричі різкіше.
+    const pull = (0.35 - current) * (regulation ? 0.12 : 0.04);
+    const step = rng.gauss(pull, regulation ? 0.09 : 0.025);
+    const total = Math.max(-0.5, Math.min(0.6, (next.teamDrift[t.id] ?? 0) + step));
+    teamSteps.push({ id: t.id, step: total - (next.teamDrift[t.id] ?? 0) });
+    next.teamDrift[t.id] = Number(total.toFixed(3));
+  }
+  teamSteps.sort((a, b) => a.step - b.step);
+  const teamName = (id: string) => TEAMS_2026.find((t) => t.id === id)!.name;
+  const tRiser = teamSteps[0]!;
+  const tFader = teamSteps[teamSteps.length - 1]!;
+  if (tRiser.step < -0.04) news.push(`🚀 ${teamName(tRiser.id)}: новий болід вдався — темп помітно росте.`);
+  if (tFader.step > 0.04) news.push(`🐌 ${teamName(tFader.id)}: розробка провалена, болід втрачає темп.`);
 
   return { market: next, news };
 }

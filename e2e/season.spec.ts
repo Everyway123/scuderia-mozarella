@@ -239,3 +239,38 @@ test('E14: ринок пілотів — підпис у міжсезонні д
 
   expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
 });
+
+test('E15: стартова гума з квали доїжджає в движок, накази — на пітволі', async ({ page }) => {
+  const errors = await openApp(page);
+  await pickTeam(page, 'haas');
+  await pickLength(page, 25);
+  await page.click('[data-test="new-season"]');
+  await page.click('[data-test="start-race"]');
+  await expect(page.locator('[data-test="start-tyres"]')).toBeVisible();
+
+  // Обом машинам — софт (кнопка підсвічується, «авто» гасне)
+  for (const row of await page.locator('[data-test="start-tyres"] .st-row').all()) {
+    const soft = row.locator('[data-tyre="soft"]');
+    await soft.click();
+    await expect(soft).toHaveClass(/on/);
+    await expect(row.locator('[data-tyre="auto"]')).not.toHaveClass(/on/);
+  }
+  await page.click('[data-test="to-race"]');
+  await expect(page.locator('#trackCanvas')).toBeVisible();
+
+  const compounds = await page.evaluate(
+    () => window.__race?.()?.race.playerCars().map((c) => c.tyre.compound) ?? [],
+  );
+  expect(compounds).toEqual(['soft', 'soft']);
+
+  // Командні накази: кнопки видно, стан доїжджає в движок, повторний клік скасовує
+  await expect(page.locator('[data-test="team-orders"]')).toBeVisible();
+  await page.click('[data-test="order-hold"]');
+  expect(await page.evaluate(() => window.__race?.()?.race.teamOrder() ?? null)).toBe('hold');
+  await page.click('[data-test="order-swap"]');
+  expect(await page.evaluate(() => window.__race?.()?.race.teamOrder() ?? null)).toBe('swap');
+  await page.click('[data-test="order-swap"]');
+  expect(await page.evaluate(() => window.__race?.()?.race.teamOrder() ?? null)).toBe('free');
+
+  expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
+});

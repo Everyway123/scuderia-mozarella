@@ -406,6 +406,24 @@ describe('збереження', () => {
     localStorage.setItem('scuderiaMozarellaSeason1', JSON.stringify({ version: 1, teamId: 'haas' }));
     expect(load()).toBeNull();
   });
+
+  it("v3 → v4: жива кар'єра мігрує, а не стирається", () => {
+    // Сейв версії 3: ринок ще без епох команд (teamDrift)
+    const s = newSeason('williams', 25, 123);
+    s.rp = 9;
+    s.homeTracks.push('monza');
+    const v3 = JSON.parse(JSON.stringify(s)) as Record<string, unknown>;
+    v3['version'] = 3;
+    delete (v3['market'] as Record<string, unknown>)['teamDrift'];
+    localStorage.setItem('scuderiaMozarellaSeason1', JSON.stringify(v3));
+
+    const back = load();
+    expect(back).not.toBeNull();
+    expect(back!.version).toBe(4);
+    expect(back!.market.teamDrift).toEqual({});
+    expect(back!.rp).toBe(9);
+    expect(back!.homeTracks).toEqual(['monza']);
+  });
 });
 
 describe('штрафи стюардів (Monopoly: drive-through)', () => {

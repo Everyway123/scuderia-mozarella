@@ -42,7 +42,7 @@ import { COMPOUNDS } from './sim/constants.ts';
 import { gridFromQuali, runQualifying, type QualiResult } from './sim/qualifying.ts';
 import { fmt, type Race } from './sim/raceEngine.ts';
 import { Rng } from './sim/rng.ts';
-import type { RaceLength, Team } from './sim/types.ts';
+import type { CompoundId, RaceLength, Team } from './sim/types.ts';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 let view: RaceView | null = null;
@@ -180,7 +180,11 @@ function showRules(): void {
         <li><b>⚡ Override</b> (регламент-2026, замість DRS): −0.55 с на колі, тільки в межах 1.0 с від суперника, запас обмежений. Витрачай на обгін, який щось вирішує.</li>
         <li><b>🔧 Бокси.</b> Кнопки С/М/Х/І/Д — заїзд наступного кола на обрану суміш. «СТРАТЕГІЯ: АВТО» — план веде інженер, ти можеш перебити будь-коли.</li>
         <li><b>🌦 РАДАР</b> — прогноз погоди на 6 кіл. <b>Суперники його не бачать</b> — вони реагують на краплі із запізненням. Заїхати на інтер за коло до дощу — твоя найбільша перевага (виміряно: +2.3 позиції за мокру гонку).</li>
+        <li><b>🤝 Командні накази.</b> «Поміняти» — пропустити напарника, щойно машини поруч; «Тримати» — напарники не б'ються між собою і не втрачають час. Класична дилема пітвола.</li>
       </ul>
+      <p class="hint">Перед гонкою ти обираєш <b>стартову гуму</b> кожної машини: софт — темп
+      на перших колах, але ранній піт; хард — довгий перший стінт. Інженер перепланує
+      решту стратегії від твого вибору.</p>
       <p class="hint">Гра сама стає на паузу, коли рішення справді є: дощ на радарі, сейфті-кар,
       кліф гуми, вікно планового піту, суперник у зоні атаки. На відповідь — 9 секунд.</p>
 
@@ -202,6 +206,7 @@ function showRules(): void {
         <li><b>Очки розробки (RP)</b> — за фініші <i>і за відіграні позиції</i>: аутсайдер теж прогресує. Витрачай на <b>картки</b> — три пропозиції на етап, кожна щось дає і чогось коштує (одна завжди без мінусів).</li>
         <li><b>Козирі</b> — три одноразові на сезон: потрійна ставка, подвійна розробка, перебудова.</li>
         <li><b>Фірмові траси:</b> виграв гонку — ця траса твоя назавжди (−0.04 с/коло), і вона переходить у наступний сезон.</li>
+        <li><b>Епохи команд:</b> між сезонами темп болідів дрейфує, а кожен третій сезон — новий технічний регламент, що перетасовує ієрархію. Лідер грида не вічний — аутсайдера реально вивести в чемпіони.</li>
       </ul>
 
       <h3>📋 Після фінішу</h3>
@@ -267,7 +272,7 @@ function showHub(): void {
   app.innerHTML = `
     <div class="hub" data-test="hub">
       <header class="hub-head" style="--team:${team.color}">
-        <div><b>${esc(team.name)}</b><span>сезон 2026 · ${myPos}-е місце в кубку конструкторів</span></div>
+        <div><b>${esc(team.name)}</b><span>сезон ${2026 + s.market.seasonsPlayed} · ${myPos}-е місце в кубку конструкторів</span></div>
         <button class="btn ghost" data-test="to-menu">← Меню</button>
       </header>
 
@@ -594,6 +599,8 @@ function showQuali(): void {
   const roster = seasonDrivers(s);
   const quali = runQualifying(track, roster, teamMap, new Rng(seed ^ 0x51ed));
   const mine = seasonDriversOfTeam(s, s.teamId).map((d) => d.id);
+  // Вибір стартової гуми: немає запису — стартує за планом інженера
+  const startTyres: Record<string, CompoundId> = {};
 
   const render = () => {
     app.innerHTML = `
@@ -634,6 +641,29 @@ function showQuali(): void {
           </div>
         </div>
 
+        <div class="field">
+          <span>Стартова гума · шанс дощу ${Math.round(track.rainChance * 100)}%</span>
+          <div class="start-tyres" data-test="start-tyres">
+            ${seasonDriversOfTeam(s, s.teamId)
+              .map(
+                (d) => `<div class="st-row">
+                  <b>${esc(d.short)}</b>
+                  <button class="st-opt${startTyres[d.id] === undefined ? ' on' : ''}" data-st="${d.id}" data-tyre="auto" title="Суміш обирає інженер за планом">АВТО</button>
+                  ${(['soft', 'medium', 'hard'] as const)
+                    .map(
+                      (c) =>
+                        `<button class="st-opt${startTyres[d.id] === c ? ' on' : ''}" data-st="${d.id}" data-tyre="${c}"
+                          style="--c:${COMPOUNDS[c].color}" title="${COMPOUNDS[c].label}">${COMPOUNDS[c].label.slice(0, 1).toUpperCase()}</button>`,
+                    )
+                    .join('')}
+                </div>`,
+              )
+              .join('')}
+          </div>
+          <p class="hint">Софт — темп на старті, але ранній піт. Хард — довгий перший стінт.
+          Інженер перепланує решту стратегії від твого вибору.</p>
+        </div>
+
         <button class="btn primary big" data-test="to-race">🏁 У ГОНКУ</button>
       </div>`;
 
@@ -646,8 +676,18 @@ function showQuali(): void {
         render();
       });
     }
+    for (const btn of app.querySelectorAll<HTMLButtonElement>('[data-st]')) {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.st!;
+        if (btn.dataset.tyre === 'auto') delete startTyres[id];
+        else startTyres[id] = btn.dataset.tyre as CompoundId;
+        for (const b of app.querySelectorAll<HTMLButtonElement>(`[data-st="${id}"]`)) {
+          b.classList.toggle('on', b === btn);
+        }
+      });
+    }
     app.querySelector('[data-test="to-race"]')!.addEventListener('click', () => {
-      startRace(track.id, s.length, seed, teams, s.teamId, s, gridFromQuali(quali));
+      startRace(track.id, s.length, seed, teams, s.teamId, s, gridFromQuali(quali), startTyres);
     });
   };
 
@@ -664,6 +704,7 @@ function startRace(
   playerTeamId: string,
   seasonState: SeasonState | null,
   grid?: string[],
+  startTyres?: Record<string, CompoundId>,
 ): void {
   const track = TRACK_BY_ID.get(trackId)!;
   // У сезоні склад пілотів живий: трансфери й дрейф форми з ринку
@@ -683,6 +724,7 @@ function startRace(
     seed,
     grid: startGrid,
     playerTeamId,
+    startTyres,
     onFinish: (race) => showResults(race, seasonState, trackId),
   });
 }

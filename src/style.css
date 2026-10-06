@@ -1553,3 +1553,55 @@ input {
   padding: 0 3px;
   margin-left: 4px;
 }
+
+/* Командні накази: один рядок на обидві машини */
+.pw-orders {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pw-orders .pw-act {
+  flex: 1;
+  font-size: 11px;
+}
+
+/* Вибір стартової гуми на екрані квали */
+.start-tyres {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.st-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.st-row b {
+  width: 44px;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+
+.st-opt {
+  min-width: 44px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--c, var(--text));
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.st-opt.on {
+  border-color: var(--c, var(--accent));
+  background: color-mix(in srgb, var(--c, var(--accent)) 18%, var(--panel));
+  color: var(--text);
+}

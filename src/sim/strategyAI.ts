@@ -126,12 +126,15 @@ export function planWithStops(
   pitLossTotal: number,
   stops: number,
   wearMult = 1,
+  firstCompound?: CompoundId,
 ): StrategyPlan {
   const parts = stops + 1;
   const lengths = splitLaps(laps, parts);
   let best: StrategyPlan | null = null;
 
   for (const combo of compoundCombos(parts)) {
+    // Гравець обрав стартову гуму — перебираємо лише плани з неї
+    if (firstCompound && combo[0] !== firstCompound) continue;
     // Правило двох сумішей
     if (new Set(combo).size < 2) continue;
 
@@ -143,7 +146,26 @@ export function planWithStops(
       best = { stops, cost, stints: combo.map((compound, i) => ({ compound, laps: lengths[i]! })) };
     }
   }
-  return best!;
+  // Форсована перша суміш може не мати жодної легальної комбінації
+  // (наприклад, не-суха) — тоді падаємо назад на вільний перебір
+  return best ?? planWithStops(track, laps, driver, pitLossTotal, stops, wearMult);
+}
+
+/**
+ * Найкращий план, що СТАРТУЄ з обраної гравцем суміші. Без rng — свідомо:
+ * вибір стартової гуми не має зсувати головний потік симуляції ні на тік.
+ */
+export function planWithFirst(
+  track: Track,
+  laps: number,
+  driver: Driver,
+  pitLossTotal: number,
+  firstCompound: CompoundId,
+  wearMult = 1,
+): StrategyPlan {
+  return [1, 2, 3]
+    .map((s) => planWithStops(track, laps, driver, pitLossTotal, s, wearMult, firstCompound))
+    .sort((a, b) => a.cost - b.cost)[0]!;
 }
 
 /**

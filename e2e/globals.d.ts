@@ -22,6 +22,7 @@ interface RaceViewHandle {
       position: number;
       status: string;
     }[];
+    teamOrder(): 'free' | 'hold' | 'swap';
     classification(): {
       position: number;
       driver: { id: string };

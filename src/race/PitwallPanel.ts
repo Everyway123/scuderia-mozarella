@@ -38,6 +38,8 @@ export class PitwallPanel {
   private readonly race: Race;
   private forecastCells: HTMLElement | null = null;
   private forecastLap = -1;
+  private orderSwapBtn: HTMLButtonElement | null = null;
+  private orderHoldBtn: HTMLButtonElement | null = null;
 
   constructor(host: HTMLElement, race: Race) {
     this.host = host;
@@ -57,8 +59,26 @@ export class PitwallPanel {
       <b>ПІТВОЛ</b><span>${team?.name ?? ''}</span></div>
       <div class="pw-forecast" data-test="forecast" title="Прогноз: шанс дощу на наступні кола">
         <span class="pw-lbl">РАДАР</span><div class="fc-cells"></div>
-      </div>`;
+      </div>
+      ${
+        cars.length >= 2
+          ? `<div class="pw-orders" data-test="team-orders">
+        <span class="pw-lbl">НАКАЗ</span>
+        <button class="pw-act" data-test="order-swap" title="Пропустити напарника: виконається, щойно машини поруч">🔁 ПОМІНЯТИ</button>
+        <button class="pw-act" data-test="order-hold" title="Тримати позиції: напарники не б'ються між собою">🤝 ТРИМАТИ</button>
+      </div>`
+          : ''
+      }`;
     this.forecastCells = this.host.querySelector('.fc-cells');
+    this.orderSwapBtn = this.host.querySelector('[data-test="order-swap"]');
+    this.orderHoldBtn = this.host.querySelector('[data-test="order-hold"]');
+    // Повторний клік скасовує наказ; swap і hold взаємовиключні
+    this.orderSwapBtn?.addEventListener('click', () => {
+      this.race.setTeamOrder(this.race.teamOrder() === 'swap' ? 'free' : 'swap');
+    });
+    this.orderHoldBtn?.addEventListener('click', () => {
+      this.race.setTeamOrder(this.race.teamOrder() === 'hold' ? 'free' : 'hold');
+    });
 
     for (const car of cars) {
       const driver = this.race.driver(car.driverId)!;
@@ -221,6 +241,12 @@ export class PitwallPanel {
 
   render(frame: RaceFrame): void {
     this.renderForecast();
+    const order = this.race.teamOrder();
+    if (this.orderSwapBtn) {
+      this.orderSwapBtn.classList.toggle('on', order === 'swap');
+      this.orderSwapBtn.textContent = order === 'swap' ? '🔁 ЧЕКАЄМО…' : '🔁 ПОМІНЯТИ';
+    }
+    this.orderHoldBtn?.classList.toggle('on', order === 'hold');
     for (const [driverId, refs] of this.cards) {
       const car = this.race.playerCars().find((c) => c.driverId === driverId);
       const sample = frame.cars.find((c) => c.driverId === driverId);

@@ -41,6 +41,8 @@ export interface RaceViewOptions {
   seed: number;
   grid?: string[];
   playerTeamId?: string;
+  /** Вибір стартової гуми по пілотах (машини гравця). */
+  startTyres?: Record<string, CompoundId>;
   onFinish: (race: Race) => void;
 }
 
@@ -96,6 +98,7 @@ export class RaceView {
       seed: opts.seed,
       grid: opts.grid,
       playerTeamId: opts.playerTeamId,
+      startTyres: opts.startTyres,
     });
     this.replay = new RaceReplay(this.race);
 

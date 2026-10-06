@@ -32,6 +32,7 @@ import {
   decidePace,
   decidePit,
   planForDriver,
+  planWithFirst,
   planWithStops,
   type AiBrain,
 } from './strategyAI.ts';
@@ -83,7 +84,15 @@ export interface RaceSetup {
   grid?: string[];
   /** Команда гравця — під його керуванням обидві її машини. */
   playerTeamId?: string;
+  /**
+   * Вибір стартової гуми по пілотах (зазвичай лише машини гравця).
+   * Кого немає в мапі — стартує за планом інженера, як і раніше.
+   */
+  startTyres?: Record<string, CompoundId>;
 }
+
+/** Командний наказ: вільна боротьба, тримати позиції чи пропустити напарника. */
+export type TeamOrderMode = 'free' | 'hold' | 'swap';
 
 export class Race {
   readonly track: Track;
@@ -102,6 +111,10 @@ export class Race {
   private everWet = false;
   /** Хто цього кола не проїхав суперника — у них вищий шанс уваги стюардів. */
   private readonly failedDuels = new Set<string>();
+  /** Чинний командний наказ для машин гравця. */
+  private teamOrderMode: TeamOrderMode = 'free';
+  /** Порядок напарників у момент наказу «тримати» — його й тримаємо. */
+  private heldOrder: [string, string] | null = null;
 
   constructor(setup: RaceSetup) {
     this.rng = new Rng(setup.seed);
@@ -145,9 +158,21 @@ export class Race {
       const driver = this.drivers.get(car.driverId)!;
       const wearMult = this.teams.get(car.teamId)?.tyreWear ?? 1;
       const plan = planForDriver(this.track, this.totalLaps, driver, pitLossTotal, this.rng, wearMult);
-      this.brains.set(car.driverId, createBrain(plan, this.rng));
-      // Стартова гума — з плану
-      const first = plan.stints[0]?.compound ?? 'medium';
+      const brain = createBrain(plan, this.rng);
+
+      // Вибір стартової гуми гравцем: переплановуємо стратегію від обраної
+      // суміші БЕЗ rng — головний потік симуляції не зсувається ні на тік,
+      // тож гонки без цього вибору лишаються побайтово тими самими.
+      const choice = setup.startTyres?.[car.driverId];
+      if (choice && DRY_COMPOUNDS.includes(choice) && choice !== plan.stints[0]?.compound) {
+        const jitter = brain.nextPitLap - (plan.stints[0]?.laps ?? 20);
+        const forced = planWithFirst(this.track, this.totalLaps, driver, pitLossTotal, choice, wearMult);
+        brain.plan = forced;
+        brain.nextPitLap = Math.max(3, (forced.stints[0]?.laps ?? 20) + jitter);
+      }
+
+      this.brains.set(car.driverId, brain);
+      const first = brain.plan.stints[0]?.compound ?? 'medium';
       car.tyre = freshTyre(first);
       car.compoundsUsed = [first];
     }
@@ -251,6 +276,29 @@ export class Race {
   /** Машини гравця — для панелі пітволу. */
   playerCars(): CarState[] {
     return this.state.cars.filter((c) => c.isPlayer);
+  }
+
+  /** Чинний командний наказ. */
+  teamOrder(): TeamOrderMode {
+    return this.teamOrderMode;
+  }
+
+  /**
+   * Командний наказ для машин гравця.
+   * 'hold' — напарники не борються між собою (жодних втрат на внутрішні дуелі);
+   * 'swap' — пропустити напарника: виконується, щойно машини поруч на трасі,
+   * і наказ знімається сам. Це класична дилема пітвола — тепер вона в грі.
+   */
+  setTeamOrder(mode: TeamOrderMode): void {
+    this.teamOrderMode = mode;
+    if (mode === 'hold') {
+      const mine = this.state.cars
+        .filter((c) => c.isPlayer && c.status === 'running')
+        .sort((a, b) => a.position - b.position);
+      this.heldOrder = mine.length >= 2 ? [mine[0]!.driverId, mine[1]!.driverId] : null;
+    } else {
+      this.heldOrder = null;
+    }
   }
 
   driver(id: string): Driver | undefined {
@@ -605,6 +653,12 @@ export class Race {
 
     this.resort();
 
+    // 7.4 Командні накази: «пропустити» виконується, щойно машини гравця
+    //     поруч; «тримати» відновлює зафіксований порядок, якщо його зламав
+    //     піт-цикл (андеркат напарника — теж боротьба, яку наказ забороняє)
+    if (this.teamOrderMode === 'swap') this.tryTeamSwap();
+    else if (this.teamOrderMode === 'hold') this.enforceHold();
+
     // 7.5 Підсумки пітів — після пересортування, коли вже видно, куди виїхав:
     //     «хард, стоянка 2.31 · −22.4 с · P8→P11». Один погляд — уся ціна рішення.
     const WHY_LABEL: Record<string, string> = {
@@ -655,6 +709,18 @@ export class Race {
 
       // Той, хто щойно проїхав піт-лейн, ні з ким на трасі не бореться
       if (pitted.has(attacker.driverId) || pitted.has(defender.driverId)) continue;
+
+      // «Тримати позиції»: напарники гравця не б'ються між собою — задній
+      // сідає в хвіст без жодних втрат на дуель. Це і є цінність наказу.
+      if (this.teamOrderMode === 'hold' && attacker.isPlayer && defender.isPlayer) {
+        const aEnd = attacker.totalTime + lapTimes.get(attacker.driverId)!;
+        const dEnd = defender.totalTime + lapTimes.get(defender.driverId)!;
+        if (aEnd - dEnd < MIN_GAP) {
+          lapTimes.set(attacker.driverId, dEnd + MIN_GAP - attacker.totalTime);
+        }
+        attacker.stuckLaps = 0;
+        continue;
+      }
 
       const aTime = attacker.totalTime + lapTimes.get(attacker.driverId)!;
       const dTime = defender.totalTime + lapTimes.get(defender.driverId)!;
@@ -712,6 +778,56 @@ export class Race {
         }
       }
     }
+  }
+
+  /**
+   * «Пропустити напарника». Виконується лише коли машини гравця сусідні за
+   * позицією (чужих між ними немає) і в межах трьох секунд — інакше обмін
+   * виглядав би телепортом. Поки умови немає, наказ висить і чекає.
+   */
+  private tryTeamSwap(): void {
+    const mine = this.state.cars
+      .filter((c) => c.isPlayer && c.status === 'running')
+      .sort((a, b) => a.position - b.position);
+    if (mine.length < 2) {
+      this.teamOrderMode = 'free';
+      return;
+    }
+    const ahead = mine[0]!;
+    const behind = mine[1]!;
+    if (behind.position !== ahead.position + 1) return;
+    if (behind.lap !== ahead.lap) return; // коло відставання обміном не лікується
+    if (behind.totalTime - ahead.totalTime > 3) return;
+
+    const t = ahead.totalTime;
+    ahead.totalTime = behind.totalTime;
+    behind.totalTime = t;
+    this.teamOrderMode = 'free';
+    this.resort();
+    this.log(
+      'radio',
+      `Командний наказ виконано: ${this.drivers.get(ahead.driverId)!.short} пропускає ${this.drivers.get(behind.driverId)!.short}`,
+      behind.driverId,
+    );
+  }
+
+  /**
+   * «Тримати позиції» після піт-циклу: якщо напарники помінялись місцями
+   * (андеркат), повертаємо зафіксований порядок, щойно вони сусідні за
+   * позицією на одному колі. Обмін часів симетричний усередині команди —
+   * суперників він не чіпає.
+   */
+  private enforceHold(): void {
+    if (!this.heldOrder) return;
+    const a = this.state.cars.find((c) => c.driverId === this.heldOrder![0]);
+    const b = this.state.cars.find((c) => c.driverId === this.heldOrder![1]);
+    if (!a || !b || a.status !== 'running' || b.status !== 'running') return;
+    if (a.position !== b.position + 1 || a.lap !== b.lap) return;
+
+    const t = a.totalTime;
+    a.totalTime = b.totalTime;
+    b.totalTime = t;
+    this.resort();
   }
 
   private deploySafetyCar(laps: number): void {

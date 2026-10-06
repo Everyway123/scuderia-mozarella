@@ -8,6 +8,7 @@ import {
   emptyMarket,
   marketDrivers,
   marketDriversOfTeam,
+  marketTeams,
   teamOf,
   type MarketState,
 } from './market.ts';
@@ -19,7 +20,7 @@ import type { Driver, RaceLength, Team } from '../sim/types.ts';
 import { isPureUpgrade, OFFER_SIZE, PART_BY_ID, PARTS } from './parts.ts';
 
 export const SAVE_KEY = 'scuderiaMozarellaSeason1';
-const SAVE_VERSION = 3;
+const SAVE_VERSION = 4;
 
 export type ChipId = 'triple' | 'rebuild' | 'doubleRp';
 
@@ -179,7 +180,8 @@ export function teamsForRound(state: SeasonState): Team[] {
   const track = currentTrack(state);
   const home = state.homeTracks.includes(track.id);
 
-  return TEAMS_2026.map((team) => {
+  // База — з урахуванням епох: грид дрейфує між сезонами, Мерседес не вічний
+  return marketTeams(state.market).map((team) => {
     if (team.id !== state.teamId) {
       // Суперники розвиваються самі: сильніші трохи повільніше, слабші швидше —
       // так грид із часом стискається, а не розповзається
@@ -408,12 +410,19 @@ export function load(): SeasonState | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SeasonState;
-    // Стара версія збереження несумісна за структурою: там була лінійна
-    // розробка замість карток. Чесніше почати заново, ніж мігрувати наосліп.
+    // v3 → v4: з'явились епохи команд (market.teamDrift). Гра публічна,
+    // живі кар'єри цінні — додаємо нове поле замість стирати збереження.
+    if (parsed.version === 3 && parsed.market && typeof parsed.market === 'object') {
+      parsed.market.teamDrift = parsed.market.teamDrift ?? {};
+      parsed.version = SAVE_VERSION;
+    }
+    // Старіші версії несумісні за структурою: там була лінійна розробка
+    // замість карток. Чесніше почати заново, ніж мігрувати наосліп.
     if (parsed.version !== SAVE_VERSION) return null;
     if (!parsed.teamId || typeof parsed.round !== 'number') return null;
     if (!Array.isArray(parsed.parts)) return null;
     if (!parsed.market || typeof parsed.market.seasonsPlayed !== 'number') return null;
+    if (!parsed.market.teamDrift || typeof parsed.market.teamDrift !== 'object') return null;
     return parsed;
   } catch {
     return null;
