@@ -38,6 +38,14 @@ import {
   type ChipId,
   type SeasonState,
 } from './season/season.ts';
+import {
+  compareDuel,
+  duelFromHash,
+  duelResult,
+  duelUrl,
+  weeklyRace,
+  type DuelChallenge,
+} from './online/duel.ts';
 import { COMPOUNDS } from './sim/constants.ts';
 import { gridFromQuali, runQualifying, type QualiResult } from './sim/qualifying.ts';
 import { fmt, type Race } from './sim/raceEngine.ts';
@@ -48,6 +56,10 @@ const app = document.querySelector<HTMLDivElement>('#app')!;
 let view: RaceView | null = null;
 let season: SeasonState | null = null;
 let quick: { trackId: string; length: RaceLength; seed: number; teamId: string } | null = null;
+/** Прийнятий виклик дуелі — щоб після фінішу порівняти результати. */
+let duel: DuelChallenge | null = null;
+/** Параметри останньої гонки — з них будується посилання-виклик. */
+let lastRace: { trackId: string; length: RaceLength; seed: number; teamId: string } | null = null;
 
 function clearView(): void {
   view?.destroy();
@@ -62,7 +74,10 @@ function showMenu(): void {
   clearView();
   season = null;
   quick = null;
+  duel = null;
   const saved = load();
+  const weekly = weeklyRace();
+  const weeklyTrack = TRACK_BY_ID.get(weekly.trackId)!;
 
   app.innerHTML = `
     <div class="setup" data-test="menu">
@@ -100,7 +115,11 @@ function showMenu(): void {
 
       <button class="btn primary big" data-test="new-season">🏆 НОВИЙ СЕЗОН</button>
       <button class="btn big ghost" data-test="quick-race">⚡ Швидка гонка</button>
+      <button class="btn big ghost" data-test="weekly">📅 Гонка тижня ${weekly.week} · ${esc(weeklyTrack.name)}</button>
       <button class="btn big ghost" data-test="rules">❓ Як грати</button>
+      <p class="hint">Гонка тижня — один seed на весь світ: усі грають ту саму гонку
+      з тим самим дощем і сейфті-карами. Після фінішу кидай виклик посиланням —
+      суперник зіграє твою гонку за ту саму команду, і виграє стратегія.</p>
     </div>
   `;
 
@@ -153,6 +172,10 @@ function showMenu(): void {
   app.querySelector('[data-test="wipe"]')?.addEventListener('click', () => {
     clearSave();
     showMenu();
+  });
+
+  app.querySelector('[data-test="weekly"]')!.addEventListener('click', () => {
+    startRace(weekly.trackId, 25, weekly.seed, TEAMS_2026, teamSel.value, null);
   });
 
   app.querySelector('[data-test="rules"]')!.addEventListener('click', showRules);
@@ -209,6 +232,12 @@ function showRules(): void {
         <li><b>Епохи команд:</b> між сезонами темп болідів дрейфує, а кожен третій сезон — новий технічний регламент, що перетасовує ієрархію. Лідер грида не вічний — аутсайдера реально вивести в чемпіони.</li>
       </ul>
 
+      <h3>⚔️ Онлайн: дуелі й гонка тижня</h3>
+      <ul>
+        <li><b>Дуель посиланням.</b> Після швидкої гонки чи гонки тижня кидай виклик: посилання відтворює ту саму гонку з тим самим дощем і сейфті-карами, суперник грає за ту саму команду. Різниця в результаті — тільки рішення на пітволі.</li>
+        <li><b>Гонка тижня.</b> Один seed на весь світ: цього тижня всі грають один етап в однакових умовах. Зіграй — і виклич друзів.</li>
+      </ul>
+
       <h3>📋 Після фінішу</h3>
       <p>Розбір стратегії рахує твої втрати в секундах («2 кола на сліках у дощ ≈ 14 с —
       без них був би P4») і дає одну конкретну пораду. Гонка — це урок.</p>
@@ -250,6 +279,64 @@ function showQuickSetup(): void {
     startRace(q.trackId, q.length, q.seed, TEAMS_2026, q.teamId, null);
   });
   app.querySelector('[data-test="back"]')!.addEventListener('click', showMenu);
+}
+
+// --------------------------------------------------------------- ДУЕЛІ
+
+/**
+ * Екран прийнятого виклику. Суперник гратиме ТУ САМУ гонку за ТУ САМУ
+ * команду: однаковий seed — однаковий дощ, сейфті-кари й суперники.
+ * Різниця буде тільки в рішеннях на пітволі.
+ */
+function showDuelAccept(ch: DuelChallenge): void {
+  clearView();
+  const track = TRACK_BY_ID.get(ch.trackId)!;
+  const team = TEAMS_2026.find((t) => t.id === ch.teamId);
+  if (!team) return showMenu();
+  const from = ch.name ? `від <b>${esc(ch.name)}</b>` : 'від суперника';
+
+  app.innerHTML = `
+    <div class="setup" data-test="duel-accept">
+      <h1>⚔️ Виклик на дуель</h1>
+      <p class="sub">Тобі кинули виклик ${from}.</p>
+      <p class="hint">Та сама гонка, та сама команда, той самий seed — однаковий дощ,
+      ті самі сейфті-кари. Виграє не болід, а твої рішення на пітволі.</p>
+      <ul class="track-facts">
+        <li>Траса <b>${esc(track.name)} · ${esc(track.country)}</b></li>
+        <li>Дистанція <b>${ch.length}%</b></li>
+        <li>Команда <b>${esc(team.name)}</b></li>
+        <li>Результат суперника <b>${ch.result.bestPos === 99 ? 'подвійний схід' : `P${ch.result.bestPos}`} · ${ch.result.points} очок</b></li>
+      </ul>
+      <button class="btn primary big" data-test="duel-go">🏁 ПРИЙНЯТИ ВИКЛИК</button>
+      <button class="btn big ghost" data-test="duel-decline">← До меню</button>
+    </div>`;
+
+  app.querySelector('[data-test="duel-go"]')!.addEventListener('click', () => {
+    duel = ch;
+    startRace(ch.trackId, ch.length, ch.seed, TEAMS_2026, ch.teamId, null);
+  });
+  app.querySelector('[data-test="duel-decline"]')!.addEventListener('click', showMenu);
+}
+
+/** Поділитись посиланням: системне вікно шерингу або буфер обміну. */
+async function shareUrl(url: string, text: string, btn: HTMLButtonElement): Promise<void> {
+  try {
+    if (navigator.share) {
+      await navigator.share({ text, url });
+      return;
+    }
+  } catch {
+    /* користувач закрив вікно шерингу — спробуємо буфер */
+  }
+  try {
+    await navigator.clipboard.writeText(`${text}\n${url}`);
+    const old = btn.textContent;
+    btn.textContent = '✅ Посилання скопійовано';
+    setTimeout(() => (btn.textContent = old), 2500);
+  } catch {
+    // Останній шанс: показати посилання текстом
+    window.prompt('Скопіюй посилання-виклик:', url);
+  }
 }
 
 // --------------------------------------------------------- ШТАБ СЕЗОНУ
@@ -707,6 +794,7 @@ function startRace(
   startTyres?: Record<string, CompoundId>,
 ): void {
   const track = TRACK_BY_ID.get(trackId)!;
+  lastRace = { trackId, length, seed, teamId: playerTeamId };
   // У сезоні склад пілотів живий: трансфери й дрейф форми з ринку
   const drivers = seasonState ? seasonDrivers(seasonState) : DRIVERS_2026;
   let startGrid = grid;
@@ -903,6 +991,32 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
     </div>`;
   }
 
+  // Дуель: порівняння з результатом автора виклику — або кнопка кинути
+  // виклик самому. Працює лише поза сезоном: виклик відтворює гонку з нуля.
+  let duelBlock = '';
+  if (!seasonState && lastRace) {
+    const mine = duelResult(lastRace.teamId, classification);
+    if (duel) {
+      const cmp = compareDuel(mine, duel.result);
+      const rival = duel.name ? esc(duel.name) : 'суперник';
+      const verdict =
+        cmp === 'win'
+          ? `🏆 <b>Дуель виграно!</b> Твої ${mine.points} очок проти ${duel.result.points} у ${rival}.`
+          : cmp === 'lose'
+            ? `😤 <b>Дуель програно.</b> ${mine.points} очок проти ${duel.result.points} у ${rival}. Реванш?`
+            : `🤝 <b>Нічия.</b> По ${mine.points} очок — рідкісний звір.`;
+      duelBlock = `<div class="results-sum" data-test="duel-verdict">
+        ${verdict}<br>
+        Ти: ${mine.bestPos === 99 ? 'схід' : `P${mine.bestPos}`} · ${mine.points} очок.
+        ${rival}: ${duel.result.bestPos === 99 ? 'схід' : `P${duel.result.bestPos}`} · ${duel.result.points} очок.
+      </div>`;
+    }
+    duelBlock += `<div class="duel-share">
+      <input id="duelName" maxlength="24" placeholder="твоє ім'я (необов'язково)" />
+      <button class="btn" data-test="duel-challenge">⚔️ ${duel ? 'Надіслати відповідь' : 'Кинути виклик посиланням'}</button>
+    </div>`;
+  }
+
   const panel = document.createElement('div');
   panel.className = 'results-overlay';
   panel.dataset.test = 'results';
@@ -910,6 +1024,7 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
     <div class="results">
       <h2>🏁 ${esc(race.track.name)}</h2>
       ${summary}
+      ${duelBlock}
       ${debrief}
       <table>
         <thead><tr><th></th><th>Пілот</th><th></th><th>±</th><th>Гап</th><th>Піт</th><th>Суміші</th><th>Очки</th></tr></thead>
@@ -918,6 +1033,33 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
       <button class="btn primary" data-test="results-next">${seasonState ? 'До штабу' : 'До меню'}</button>
     </div>`;
   app.appendChild(panel);
+
+  const challengeBtn = panel.querySelector<HTMLButtonElement>('[data-test="duel-challenge"]');
+  if (challengeBtn && lastRace) {
+    const nameInput = panel.querySelector<HTMLInputElement>('#duelName')!;
+    try {
+      nameInput.value = localStorage.getItem('smName') ?? '';
+    } catch {
+      /* приватний режим */
+    }
+    challengeBtn.addEventListener('click', () => {
+      const r = lastRace!;
+      const name = nameInput.value.trim().slice(0, 24);
+      try {
+        localStorage.setItem('smName', name);
+      } catch {
+        /* приватний режим */
+      }
+      const mine = duelResult(r.teamId, classification);
+      const url = duelUrl(
+        { v: 1, ...r, name: name || undefined, result: mine },
+        location.origin + location.pathname,
+      );
+      const team = TEAMS_2026.find((t) => t.id === r.teamId);
+      const text = `⚔️ SCUDERIA MOZARELLA: виклик на дуель! ${race.track.name}, ${team?.name ?? ''}: у мене ${mine.points} очок, найкращий фініш ${mine.bestPos === 99 ? 'схід' : `P${mine.bestPos}`}. Та сама гонка, той самий болід — побий стратегією:`;
+      void shareUrl(url, text, challengeBtn);
+    });
+  }
 
   panel.querySelector('[data-test="results-next"]')!.addEventListener('click', () => {
     if (seasonState) showHub();
@@ -930,4 +1072,12 @@ function showResults(race: Race, seasonState: SeasonState | null, trackId: strin
 (window as unknown as { __race: () => RaceView | null }).__race = () => view;
 (window as unknown as { __season: () => SeasonState | null }).__season = () => season;
 
-showMenu();
+// Посилання-виклик відкриває екран дуелі замість меню. Hash одразу чистимо,
+// щоб перезавантаження сторінки не повертало в прийнятий виклик.
+const incomingDuel = duelFromHash(location.hash);
+if (incomingDuel) {
+  history.replaceState(null, '', location.pathname + location.search);
+  showDuelAccept(incomingDuel);
+} else {
+  showMenu();
+}

@@ -1605,3 +1605,26 @@ input {
   background: color-mix(in srgb, var(--c, var(--accent)) 18%, var(--panel));
   color: var(--text);
 }
+
+/* Дуель: ім'я + кнопка виклику в результатах */
+.duel-share {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.duel-share input {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 11px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.duel-share .btn {
+  white-space: nowrap;
+}
