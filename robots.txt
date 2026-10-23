@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://everyway123.github.io/scuderia-mozarella/sitemap.xml
