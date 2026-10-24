@@ -20,7 +20,7 @@ import type { Driver, RaceLength, Team } from '../sim/types.ts';
 import { isPureUpgrade, OFFER_SIZE, PART_BY_ID, PARTS } from './parts.ts';
 
 export const SAVE_KEY = 'scuderiaMozarellaSeason1';
-const SAVE_VERSION = 4;
+const SAVE_VERSION = 5;
 
 export type ChipId = 'triple' | 'rebuild' | 'doubleRp';
 
@@ -96,6 +96,24 @@ export interface SeasonState {
   history: RaceRecord[];
   /** Ринок пілотів: трансфери, дрейф форми, номер сезону кар'єри. */
   market: MarketState;
+  /** Трофейна кімната: підсумки всіх завершених сезонів кар'єри. */
+  career: SeasonSummary[];
+}
+
+/** Підсумок одного завершеного сезону — рядок у трофейній кімнаті. */
+export interface SeasonSummary {
+  year: number;
+  /** Місце в кубку конструкторів. */
+  pos: number;
+  points: number;
+  wins: number;
+  podiums: number;
+  /** Найкращий фініш сезону; 0 — жодного класифікованого. */
+  bestFinish: number;
+  /** Кубок конструкторів виграно. */
+  constructorsTitle: boolean;
+  /** Наш пілот — чемпіон світу. */
+  driversTitle: boolean;
 }
 
 export function newSeason(
@@ -103,6 +121,7 @@ export function newSeason(
   length: RaceLength,
   seed: number,
   market: MarketState = emptyMarket(),
+  career: SeasonSummary[] = [],
 ): SeasonState {
   const first = marketDriversOfTeam(market, teamId)[0]?.id ?? driversOfTeam(teamId)[0]?.id ?? null;
   return {
@@ -122,6 +141,50 @@ export function newSeason(
     homeTracks: [],
     history: [],
     market,
+    career,
+  };
+}
+
+/**
+ * Підсумок щойно завершеного сезону — те, що ляже в трофейну кімнату.
+ * Рахується з історії етапів і заліків, а не накопичується по ходу:
+ * одна формула — нуль шансів розсинхронізуватись.
+ */
+export function summarizeSeason(state: SeasonState): SeasonSummary {
+  const tStand = teamStandings(state);
+  const dStand = driverStandings(state);
+  const pos = tStand.findIndex((r) => r.id === state.teamId) + 1;
+  const finished = state.history.filter((r) => r.bestPosition > 0);
+  return {
+    year: 2026 + state.market.seasonsPlayed,
+    pos,
+    points: state.teamPoints[state.teamId] ?? 0,
+    wins: finished.filter((r) => r.bestPosition === 1).length,
+    podiums: finished.filter((r) => r.bestPosition <= 3).length,
+    bestFinish: finished.length > 0 ? Math.min(...finished.map((r) => r.bestPosition)) : 0,
+    constructorsTitle: pos === 1,
+    driversTitle: dStand[0]?.isPlayer ?? false,
+  };
+}
+
+/** Сумарні цифри кар'єри для шапки трофейної кімнати й шерингу. */
+export function careerTotals(career: SeasonSummary[]): {
+  seasons: number;
+  titles: number;
+  driversTitles: number;
+  wins: number;
+  podiums: number;
+  points: number;
+  bestPos: number;
+} {
+  return {
+    seasons: career.length,
+    titles: career.filter((s) => s.constructorsTitle).length,
+    driversTitles: career.filter((s) => s.driversTitle).length,
+    wins: career.reduce((a, s) => a + s.wins, 0),
+    podiums: career.reduce((a, s) => a + s.podiums, 0),
+    points: career.reduce((a, s) => a + s.points, 0),
+    bestPos: career.length > 0 ? Math.min(...career.map((s) => s.pos)) : 0,
   };
 }
 
@@ -410,10 +473,16 @@ export function load(): SeasonState | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SeasonState;
-    // v3 → v4: з'явились епохи команд (market.teamDrift). Гра публічна,
-    // живі кар'єри цінні — додаємо нове поле замість стирати збереження.
+    // Міграції йдуть ланцюжком: гра публічна, живі кар'єри цінні —
+    // додаємо нові поля замість стирати збереження.
+    // v3 → v4: з'явились епохи команд (market.teamDrift).
     if (parsed.version === 3 && parsed.market && typeof parsed.market === 'object') {
       parsed.market.teamDrift = parsed.market.teamDrift ?? {};
+      parsed.version = 4;
+    }
+    // v4 → v5: з'явилась трофейна кімната (career).
+    if (parsed.version === 4) {
+      parsed.career = Array.isArray(parsed.career) ? parsed.career : [];
       parsed.version = SAVE_VERSION;
     }
     // Старіші версії несумісні за структурою: там була лінійна розробка
@@ -423,6 +492,7 @@ export function load(): SeasonState | null {
     if (!Array.isArray(parsed.parts)) return null;
     if (!parsed.market || typeof parsed.market.seasonsPlayed !== 'number') return null;
     if (!parsed.market.teamDrift || typeof parsed.market.teamDrift !== 'object') return null;
+    if (!Array.isArray(parsed.career)) return null;
     return parsed;
   } catch {
     return null;

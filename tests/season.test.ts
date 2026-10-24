@@ -407,20 +407,22 @@ describe('збереження', () => {
     expect(load()).toBeNull();
   });
 
-  it("v3 → v4: жива кар'єра мігрує, а не стирається", () => {
-    // Сейв версії 3: ринок ще без епох команд (teamDrift)
+  it("v3 → v5: жива кар'єра мігрує через весь ланцюжок, а не стирається", () => {
+    // Сейв версії 3: ринок ще без епох команд (teamDrift) і без трофейної
     const s = newSeason('williams', 25, 123);
     s.rp = 9;
     s.homeTracks.push('monza');
     const v3 = JSON.parse(JSON.stringify(s)) as Record<string, unknown>;
     v3['version'] = 3;
     delete (v3['market'] as Record<string, unknown>)['teamDrift'];
+    delete v3['career'];
     localStorage.setItem('scuderiaMozarellaSeason1', JSON.stringify(v3));
 
     const back = load();
     expect(back).not.toBeNull();
-    expect(back!.version).toBe(4);
+    expect(back!.version).toBe(5);
     expect(back!.market.teamDrift).toEqual({});
+    expect(back!.career).toEqual([]);
     expect(back!.rp).toBe(9);
     expect(back!.homeTracks).toEqual(['monza']);
   });
