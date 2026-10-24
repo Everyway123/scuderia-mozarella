@@ -274,3 +274,66 @@ test('E15: стартова гума з квали доїжджає в движ�
 
   expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
 });
+
+test('E19: трофейна кімната — сезон лягає в кар\'єру і видно її зі штабу', async ({ page }) => {
+  const errors = await openApp(page);
+
+  // Завершений сезон версії 4 (без career) — заразом ганяємо міграцію v4→v5
+  await page.evaluate(() => {
+    localStorage.setItem(
+      'scuderiaMozarellaSeason1',
+      JSON.stringify({
+        version: 4,
+        teamId: 'haas',
+        round: 25,
+        length: 25,
+        seed: 777,
+        driverPoints: { ocon: 210, bearman: 140, russell: 100 },
+        teamPoints: { haas: 350, mercedes: 100 },
+        rp: 4,
+        parts: [],
+        nomination: 'ocon',
+        betFixed: false,
+        chipsUsed: [],
+        armedChip: null,
+        homeTracks: [],
+        history: [
+          { round: 1, trackId: 'melbourne', podium: ['ocon'], bestPosition: 1, pointsScored: 25, rpGained: 12, betPaid: true },
+          { round: 2, trackId: 'shanghai', podium: [], bestPosition: 2, pointsScored: 18, rpGained: 9, betPaid: true },
+        ],
+        market: { assignments: {}, paceDrift: {}, teamDrift: {}, seasonsPlayed: 0 },
+      }),
+    );
+  });
+  await page.reload();
+  await page.click('[data-test="continue"]');
+  await expect(page.locator('[data-test="season-end"]')).toBeVisible();
+
+  // У фіналі трофейна кімната вже показує щойно завершений сезон
+  const finale = page.locator('[data-test="finale-career"]');
+  await expect(finale).toContainText('2026');
+  await expect(finale).toContainText('🏆');
+
+  // Перехід у новий сезон: кар\'єра зберігається
+  await page.click('[data-test="restart-carry"]');
+  await page.click('[data-test="offseason-go"]');
+  await expect(page.locator('[data-test="hub"]')).toBeVisible();
+
+  const career = await page.evaluate(() => {
+    const w = window as unknown as { __season: () => { career: { year: number; constructorsTitle: boolean; wins: number }[] } | null };
+    return w.__season()!.career;
+  });
+  expect(career.length).toBe(1);
+  expect(career[0]!.year).toBe(2026);
+  expect(career[0]!.constructorsTitle).toBe(true);
+  expect(career[0]!.wins).toBe(1);
+
+  // Трофейна кімната відкривається зі штабу
+  await page.click('[data-test="to-career"]');
+  await expect(page.locator('[data-test="career"]')).toBeVisible();
+  await expect(page.locator('[data-test="career-totals"]')).toContainText('Кубків конструкторів: 1');
+  await page.click('[data-test="career-back"]');
+  await expect(page.locator('[data-test="hub"]')).toBeVisible();
+
+  expect(errors, `помилки консолі: ${errors.join(' | ')}`).toEqual([]);
+});

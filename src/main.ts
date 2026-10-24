@@ -19,6 +19,7 @@ import {
 import {
   CHIPS,
   canUseChip,
+  careerTotals,
   clearSave,
   computeRp,
   currentTrack,
@@ -32,11 +33,13 @@ import {
   save,
   seasonDrivers,
   seasonDriversOfTeam,
+  summarizeSeason,
   teamsForRound,
   teamStandings,
   useChip,
   type ChipId,
   type SeasonState,
+  type SeasonSummary,
 } from './season/season.ts';
 import {
   compareDuel,
@@ -230,6 +233,7 @@ function showRules(): void {
         <li><b>Козирі</b> — три одноразові на сезон: потрійна ставка, подвійна розробка, перебудова.</li>
         <li><b>Фірмові траси:</b> виграв гонку — ця траса твоя назавжди (−0.04 с/коло), і вона переходить у наступний сезон.</li>
         <li><b>Епохи команд:</b> між сезонами темп болідів дрейфує, а кожен третій сезон — новий технічний регламент, що перетасовує ієрархію. Лідер грида не вічний — аутсайдера реально вивести в чемпіони.</li>
+        <li><b>🏆 Трофейна кімната:</b> кожен завершений сезон лягає рядком у кар'єру — титули, перемоги, подіуми лишаються назавжди. Кнопка «Кар'єра» у штабі.</li>
       </ul>
 
       <h3>⚔️ Онлайн: дуелі й гонка тижня</h3>
@@ -279,6 +283,68 @@ function showQuickSetup(): void {
     startRace(q.trackId, q.length, q.seed, TEAMS_2026, q.teamId, null);
   });
   app.querySelector('[data-test="back"]')!.addEventListener('click', showMenu);
+}
+
+// ------------------------------------------------------ ТРОФЕЙНА КІМНАТА
+
+/** Рядки сезонів для трофейної кімнати й фіналу сезону. */
+function careerRows(career: SeasonSummary[]): string {
+  return career
+    .map(
+      (c) => `<tr>
+        <td class="pos">${c.year}</td>
+        <td>${c.constructorsTitle ? '🏆 ' : ''}${c.pos}-е місце${c.driversTitle ? ' · 👑 чемпіон світу' : ''}</td>
+        <td class="dim">${c.wins} перем., ${c.podiums} подіум${c.podiums === 1 ? '' : 'ів'}</td>
+        <td class="pts">${c.points}</td>
+      </tr>`,
+    )
+    .join('');
+}
+
+function careerShareText(teamName: string, career: SeasonSummary[]): string {
+  const t = careerTotals(career);
+  const bits = [
+    `${t.seasons} сезон${t.seasons === 1 ? '' : t.seasons < 5 ? 'и' : 'ів'}`,
+    t.titles > 0 ? `${t.titles}×🏆 кубок конструкторів` : null,
+    t.driversTitles > 0 ? `${t.driversTitles}×👑 чемпіон світу` : null,
+    `${t.wins} перемог`,
+    `${t.podiums} подіумів`,
+    `${t.points} очок`,
+  ].filter(Boolean);
+  return `🧀 SCUDERIA MOZARELLA — моя кар'єра з ${teamName}: ${bits.join(', ')}. Спробуй сам:`;
+}
+
+/** Трофейна кімната: всі завершені сезони кар'єри. Доступна зі штабу. */
+function showCareer(): void {
+  clearView();
+  const s = season!;
+  const team = TEAMS_2026.find((t) => t.id === s.teamId)!;
+  const t = careerTotals(s.career);
+
+  app.innerHTML = `
+    <div class="setup wide" data-test="career">
+      <h1>🏆 Трофейна кімната</h1>
+      <p class="sub">${esc(team.name)} · кар'єра з ${2026}-го</p>
+      ${
+        s.career.length === 0
+          ? `<p class="hint">Поки порожньо: перший сезон ще триває. Кожен завершений сезон
+             ляже сюди рядком — а титули залишаться назавжди.</p>`
+          : `<p class="results-sum" data-test="career-totals">
+               Сезонів: <b>${t.seasons}</b> · Кубків конструкторів: <b>${t.titles}</b> ·
+               Титулів пілотів: <b>${t.driversTitles}</b> · Перемог: <b>${t.wins}</b> ·
+               Подіумів: <b>${t.podiums}</b> · Очок: <b>${t.points}</b>
+             </p>
+             <table class="grid-table"><tbody>${careerRows(s.career)}</tbody></table>
+             <button class="btn big" data-test="career-share">📣 Похвалитися кар'єрою</button>`
+      }
+      <button class="btn primary big" data-test="career-back">← До штабу</button>
+    </div>`;
+
+  const shareBtn = app.querySelector<HTMLButtonElement>('[data-test="career-share"]');
+  shareBtn?.addEventListener('click', () => {
+    void shareUrl(location.origin + location.pathname, careerShareText(team.name, s.career), shareBtn);
+  });
+  app.querySelector('[data-test="career-back"]')!.addEventListener('click', showHub);
 }
 
 // --------------------------------------------------------------- ДУЕЛІ
@@ -360,7 +426,10 @@ function showHub(): void {
     <div class="hub" data-test="hub">
       <header class="hub-head" style="--team:${team.color}">
         <div><b>${esc(team.name)}</b><span>сезон ${2026 + s.market.seasonsPlayed} · ${myPos}-е місце в кубку конструкторів</span></div>
-        <button class="btn ghost" data-test="to-menu">← Меню</button>
+        <div class="hub-actions">
+          <button class="btn ghost" data-test="to-career">🏆 Кар'єра</button>
+          <button class="btn ghost" data-test="to-menu">← Меню</button>
+        </div>
       </header>
 
       <div class="hub-grid">
@@ -468,6 +537,7 @@ function showHub(): void {
     </div>`;
 
   app.querySelector('[data-test="to-menu"]')!.addEventListener('click', showMenu);
+  app.querySelector('[data-test="to-career"]')!.addEventListener('click', showCareer);
   app.querySelector('[data-test="start-race"]')!.addEventListener('click', () => showQuali());
 
   for (const btn of app.querySelectorAll<HTMLButtonElement>('[data-bet]')) {
@@ -558,6 +628,12 @@ function showSeasonEnd(): void {
         </div>
       </div>
 
+      <h3 class="finale-h">🏆 Трофейна кімната</h3>
+      <table class="grid-table" data-test="finale-career"><tbody>
+        ${careerRows([...s.career, summarizeSeason(s)])}
+      </tbody></table>
+      <button class="btn" data-test="finale-share">📣 Похвалитися кар'єрою</button>
+
       <h3 class="finale-h">🤝 Міжсезоння · ринок пілотів</h3>
       <p class="hint">Можеш підписати <b>одного</b> вільного агента замість одного зі своїх —
       простий обмін місцями. Ціна платиться з RP наступного сезону
@@ -629,11 +705,25 @@ function showSeasonEnd(): void {
 
   const nameOf = (id: string) => roster.find((d) => d.id === id)?.name ?? id;
 
-  // Кар'єра: наступний сезон успадковує фірмові траси, ринок і залишок RP
+  const finaleShareBtn = app.querySelector<HTMLButtonElement>('[data-test="finale-share"]')!;
+  finaleShareBtn.addEventListener('click', () => {
+    const teamName = TEAMS_2026.find((t) => t.id === s.teamId)?.name ?? '';
+    void shareUrl(
+      location.origin + location.pathname,
+      careerShareText(teamName, [...s.career, summarizeSeason(s)]),
+      finaleShareBtn,
+    );
+  });
+
+  // Кар'єра: наступний сезон успадковує фірмові траси, ринок, залишок RP
+  // і трофейну кімнату — щойно завершений сезон лягає в неї підсумком
   const startNextSeason = (signing: { hireId: string; replaceId: string } | null) => {
     const off = applyOffseason(s.market, s.seed, s.teamId, signing, nameOf);
     const spent = signing ? signingCost(s.market, signing.hireId) : 0;
-    const next = newSeason(s.teamId, s.length, Math.floor(Math.random() * 1e6) + 1, off.market);
+    const next = newSeason(s.teamId, s.length, Math.floor(Math.random() * 1e6) + 1, off.market, [
+      ...s.career,
+      summarizeSeason(s),
+    ]);
     next.homeTracks = [...s.homeTracks];
     next.rp = rpAvail - spent;
     season = next;

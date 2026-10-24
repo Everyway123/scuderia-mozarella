@@ -1628,3 +1628,10 @@ input {
 .duel-share .btn {
   white-space: nowrap;
 }
+
+/* Шапка штабу: кілька кнопок праворуч */
+.hub-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
